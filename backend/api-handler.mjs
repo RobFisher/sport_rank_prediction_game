@@ -292,11 +292,13 @@ function createInMemoryStore() {
         normalizeDisplayName(googleIdentity.name) ||
         googleIdentity.email;
       const existing = inMemoryUsersById.get(googleIdentity.sub);
+      const isFirstUser = inMemoryUsersById.size === 0 && !existing;
       const now = new Date().toISOString();
       const user = {
         userId: googleIdentity.sub,
         email: googleIdentity.email,
         displayName,
+        isAdmin: existing?.isAdmin ?? isFirstUser,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
       };
@@ -312,6 +314,7 @@ function createInMemoryStore() {
         userId: user.userId,
         email: user.email,
         displayName: user.displayName,
+        isAdmin: Boolean(user.isAdmin),
         expiresAt
       });
       return {
@@ -319,7 +322,8 @@ function createInMemoryStore() {
         user: {
           userId: user.userId,
           email: user.email,
-          displayName: user.displayName
+          displayName: user.displayName,
+          isAdmin: Boolean(user.isAdmin)
         },
         expiresAt
       };
@@ -349,7 +353,8 @@ function createInMemoryStore() {
       return {
         userId: user.userId,
         email: user.email,
-        displayName: user.displayName
+        displayName: user.displayName,
+        isAdmin: Boolean(user.isAdmin)
       };
     }
   };
@@ -596,6 +601,24 @@ async function createDynamoStore() {
           }
         })
       );
+      let isAdmin = Boolean(existing.Item?.isAdmin);
+      if (!existing.Item) {
+        const usersScan = await dynamodbClient.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression: "begins_with(pk, :prefix) AND sk = :sk",
+            ExpressionAttributeValues: {
+              ":prefix": USER_PK_PREFIX,
+              ":sk": USER_SK_PROFILE
+            },
+            ProjectionExpression: "pk",
+            Limit: 1
+          })
+        );
+        if (!usersScan.Items || usersScan.Items.length === 0) {
+          isAdmin = true;
+        }
+      }
       const displayName =
         normalizeDisplayName(preferredDisplayName) ||
         normalizeDisplayName(googleIdentity.name) ||
@@ -604,6 +627,7 @@ async function createDynamoStore() {
         userId: googleIdentity.sub,
         email: googleIdentity.email,
         displayName,
+        isAdmin,
         createdAt: existing.Item?.createdAt ?? now,
         updatedAt: now
       };
@@ -636,6 +660,7 @@ async function createDynamoStore() {
             userId: user.userId,
             email: user.email,
             displayName: user.displayName,
+            isAdmin: Boolean(user.isAdmin),
             expiresAt,
             ttlEpochSeconds: expiresAtEpochSeconds
           }
@@ -646,7 +671,8 @@ async function createDynamoStore() {
         user: {
           userId: user.userId,
           email: user.email,
-          displayName: user.displayName
+          displayName: user.displayName,
+          isAdmin: Boolean(user.isAdmin)
         },
         expiresAt
       };
@@ -675,6 +701,7 @@ async function createDynamoStore() {
         userId: String(item.userId),
         email: String(item.email),
         displayName: String(item.displayName),
+        isAdmin: Boolean(item.isAdmin),
         expiresAt: String(item.expiresAt)
       };
     },
@@ -708,7 +735,8 @@ async function createDynamoStore() {
       return {
         userId: String(item.userId),
         email: String(item.email),
-        displayName: String(item.displayName)
+        displayName: String(item.displayName),
+        isAdmin: Boolean(item.isAdmin)
       };
     }
   };
@@ -795,7 +823,8 @@ async function getSessionActor(event, store) {
     sessionId,
     userId: session.userId,
     email: session.email,
-    displayName: session.displayName
+    displayName: session.displayName,
+    isAdmin: Boolean(session.isAdmin)
   };
 }
 
@@ -883,7 +912,8 @@ export async function handler(event) {
             user: {
               userId: session.user.userId,
               email: session.user.email,
-              displayName: session.user.displayName
+              displayName: session.user.displayName,
+              isAdmin: Boolean(session.user.isAdmin)
             }
           },
           {
@@ -928,7 +958,8 @@ export async function handler(event) {
         user: {
           userId: actor.userId,
           email: actor.email,
-          displayName: actor.displayName
+          displayName: actor.displayName,
+          isAdmin: Boolean(actor.isAdmin)
         }
       });
     }
@@ -951,7 +982,8 @@ export async function handler(event) {
             ? {
                 userId: actor.userId,
                 email: actor.email,
-                displayName: actor.displayName
+                displayName: actor.displayName,
+                isAdmin: Boolean(actor.isAdmin)
               }
             : null
         }

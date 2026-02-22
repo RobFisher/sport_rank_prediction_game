@@ -2,6 +2,7 @@ export interface BackendSessionUser {
   userId: string;
   email: string;
   displayName: string;
+  isAdmin?: boolean;
 }
 
 export interface BackendProject {
