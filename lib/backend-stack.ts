@@ -128,6 +128,26 @@ export class BackendStack extends Stack {
       methods: [HttpMethod.GET, HttpMethod.PUT],
       integration
     });
+    api.addRoutes({
+      path: "/api/competitor-lists",
+      methods: [HttpMethod.GET, HttpMethod.POST],
+      integration
+    });
+    api.addRoutes({
+      path: "/api/competitor-lists/{competitorListId}",
+      methods: [HttpMethod.GET, HttpMethod.PUT],
+      integration
+    });
+    api.addRoutes({
+      path: "/api/games",
+      methods: [HttpMethod.GET, HttpMethod.POST],
+      integration
+    });
+    api.addRoutes({
+      path: "/api/games/{gameId}",
+      methods: [HttpMethod.GET, HttpMethod.PUT],
+      integration
+    });
 
     this.apiBaseUrl = api.apiEndpoint;
     this.apiDomainName = Fn.select(2, Fn.split("/", api.apiEndpoint));

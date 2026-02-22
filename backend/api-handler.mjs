@@ -7,6 +7,10 @@ const PROJECT_PK_PREFIX = "PROJECT#";
 const PROJECT_NAME_PK_PREFIX = "PROJECT_NAME#";
 const PROJECT_SK_META = "META";
 const PROJECT_NAME_SK_LOCK = "LOCK";
+const COMPETITOR_LIST_PK_PREFIX = "COMPETITOR_LIST#";
+const COMPETITOR_LIST_SK_META = "META";
+const GAME_PK_PREFIX = "GAME#";
+const GAME_SK_META = "META";
 const USER_PK_PREFIX = "USER#";
 const USER_SK_PROFILE = "PROFILE";
 const SESSION_PK_PREFIX = "SESSION#";
@@ -15,6 +19,8 @@ const SESSION_COOKIE_NAME = "sport_rank_session";
 
 const inMemoryProjectsById = new Map();
 const inMemoryProjectIdByNameKey = new Map();
+const inMemoryCompetitorListsById = new Map();
+const inMemoryGamesById = new Map();
 const inMemoryUsersById = new Map();
 const inMemorySessionsById = new Map();
 
@@ -43,6 +49,103 @@ function normalizeDisplayName(value) {
   return String(value ?? "")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function normalizeColor(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+    throw new Error(`Invalid color value "${value}". Use a 6-digit hex color.`);
+  }
+  return `#${hex.toUpperCase()}`;
+}
+
+function parseCompetitorListInput(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Competitor list must be an object.");
+  }
+  const id = String(payload.id ?? "").trim();
+  const name = normalizeProjectName(payload.name ?? "");
+  if (!id) {
+    throw new Error("Competitor list id is required.");
+  }
+  if (!name) {
+    throw new Error("Competitor list name is required.");
+  }
+  if (!Array.isArray(payload.competitors)) {
+    throw new Error("Competitor list must include a competitors array.");
+  }
+  const competitors = payload.competitors.map((competitor) => {
+    if (!competitor || typeof competitor !== "object" || Array.isArray(competitor)) {
+      throw new Error("Competitor must be an object.");
+    }
+    const competitorId = String(competitor.id ?? "").trim();
+    const competitorName = String(competitor.name ?? "").trim();
+    if (!competitorId) {
+      throw new Error("Competitor id is required.");
+    }
+    if (!competitorName) {
+      throw new Error("Competitor name is required.");
+    }
+    return {
+      id: competitorId,
+      name: competitorName,
+      subtitle: competitor.subtitle ? String(competitor.subtitle) : null,
+      number: competitor.number ? String(competitor.number) : null,
+      color: normalizeColor(competitor.color)
+    };
+  });
+  const seen = new Set();
+  competitors.forEach((competitor) => {
+    if (seen.has(competitor.id)) {
+      throw new Error(`Competitor list has duplicate id "${competitor.id}".`);
+    }
+    seen.add(competitor.id);
+  });
+  return {
+    id,
+    name,
+    competitors
+  };
+}
+
+function parseGameInput(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Game must be an object.");
+  }
+  const id = String(payload.id ?? "").trim();
+  const name = normalizeProjectName(payload.name ?? "");
+  const competitorListId = String(payload.competitorListId ?? "").trim();
+  const closesAtRaw = String(payload.closesAt ?? "").trim();
+  if (!id) {
+    throw new Error("Game id is required.");
+  }
+  if (!name) {
+    throw new Error("Game name is required.");
+  }
+  if (!competitorListId) {
+    throw new Error("Game competitorListId is required.");
+  }
+  if (!closesAtRaw) {
+    throw new Error("Game closesAt is required.");
+  }
+  const closesAt = new Date(closesAtRaw);
+  if (Number.isNaN(closesAt.getTime())) {
+    throw new Error("Game closesAt must be a valid datetime.");
+  }
+  const results = Array.isArray(payload.results)
+    ? payload.results.map((entry) => String(entry))
+    : null;
+  return {
+    id,
+    name,
+    competitorListId,
+    closesAt: closesAt.toISOString(),
+    results
+  };
 }
 
 function toProjectNameKey(projectName) {
@@ -174,6 +277,32 @@ function buildProjectDetails(project) {
   };
 }
 
+function buildCompetitorListSummary(list) {
+  return {
+    competitorListId: list.competitorListId,
+    name: list.name,
+    updatedAt: list.updatedAt
+  };
+}
+
+function buildCompetitorListDetails(list) {
+  return {
+    ...buildCompetitorListSummary(list),
+    competitors: list.competitors
+  };
+}
+
+function buildGameSummary(game) {
+  return {
+    gameId: game.gameId,
+    name: game.name,
+    competitorListId: game.competitorListId,
+    closesAt: game.closesAt,
+    updatedAt: game.updatedAt,
+    results: game.results ?? null
+  };
+}
+
 export async function listProjectSummariesFromDynamoScan(
   dynamodbClient,
   ScanCommand,
@@ -208,6 +337,75 @@ export async function listProjectSummariesFromDynamoScan(
   } while (exclusiveStartKey);
 
   return projects;
+}
+
+export async function listCompetitorListsFromDynamoScan(
+  dynamodbClient,
+  ScanCommand,
+  tableName
+) {
+  const lists = [];
+  let exclusiveStartKey = undefined;
+
+  do {
+    const response = await dynamodbClient.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "itemType = :itemType",
+        ExpressionAttributeValues: {
+          ":itemType": "competitor_list"
+        },
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {})
+      })
+    );
+
+    for (const item of response.Items ?? []) {
+      lists.push({
+        competitorListId: String(item.competitorListId),
+        name: String(item.name),
+        updatedAt: String(item.updatedAt)
+      });
+    }
+
+    exclusiveStartKey = response.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  return lists;
+}
+
+export async function listGamesFromDynamoScan(dynamodbClient, ScanCommand, tableName) {
+  const games = [];
+  let exclusiveStartKey = undefined;
+
+  do {
+    const response = await dynamodbClient.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "itemType = :itemType",
+        ExpressionAttributeValues: {
+          ":itemType": "game"
+        },
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {})
+      })
+    );
+
+    for (const item of response.Items ?? []) {
+      games.push({
+        gameId: String(item.gameId),
+        name: String(item.name),
+        competitorListId: String(item.competitorListId),
+        closesAt: String(item.closesAt),
+        updatedAt: String(item.updatedAt),
+        results: Array.isArray(item.results)
+          ? item.results.map((entry) => String(entry))
+          : null
+      });
+    }
+
+    exclusiveStartKey = response.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  return games;
 }
 
 function createInMemoryStore() {
@@ -284,6 +482,96 @@ function createInMemoryStore() {
       };
       inMemoryProjectsById.set(projectId, updatedProject);
       return { project: buildProjectDetails(updatedProject) };
+    },
+
+    async listCompetitorLists() {
+      return [...inMemoryCompetitorListsById.values()]
+        .map((list) => buildCompetitorListSummary(list))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async getCompetitorList(competitorListId) {
+      const list = inMemoryCompetitorListsById.get(competitorListId);
+      return list ? buildCompetitorListDetails(list) : null;
+    },
+
+    async createCompetitorList(actor, list) {
+      if (inMemoryCompetitorListsById.has(list.id)) {
+        return { conflict: true };
+      }
+      const now = new Date().toISOString();
+      const stored = {
+        competitorListId: list.id,
+        name: list.name,
+        competitors: list.competitors,
+        createdAt: now,
+        updatedAt: now
+      };
+      inMemoryCompetitorListsById.set(list.id, stored);
+      return { list: buildCompetitorListDetails(stored) };
+    },
+
+    async updateCompetitorList(actor, competitorListId, list) {
+      const existing = inMemoryCompetitorListsById.get(competitorListId);
+      if (!existing) {
+        return { notFound: true };
+      }
+      const now = new Date().toISOString();
+      const updated = {
+        ...existing,
+        name: list.name,
+        competitors: list.competitors,
+        updatedAt: now
+      };
+      inMemoryCompetitorListsById.set(competitorListId, updated);
+      return { list: buildCompetitorListDetails(updated) };
+    },
+
+    async listGames() {
+      return [...inMemoryGamesById.values()]
+        .map((game) => buildGameSummary(game))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async getGame(gameId) {
+      const game = inMemoryGamesById.get(gameId);
+      return game ? buildGameSummary(game) : null;
+    },
+
+    async createGame(actor, game) {
+      if (inMemoryGamesById.has(game.id)) {
+        return { conflict: true };
+      }
+      const now = new Date().toISOString();
+      const stored = {
+        gameId: game.id,
+        name: game.name,
+        competitorListId: game.competitorListId,
+        closesAt: game.closesAt,
+        results: game.results ?? null,
+        createdAt: now,
+        updatedAt: now
+      };
+      inMemoryGamesById.set(game.id, stored);
+      return { game: buildGameSummary(stored) };
+    },
+
+    async updateGame(actor, gameId, game) {
+      const existing = inMemoryGamesById.get(gameId);
+      if (!existing) {
+        return { notFound: true };
+      }
+      const now = new Date().toISOString();
+      const updated = {
+        ...existing,
+        name: game.name,
+        competitorListId: game.competitorListId,
+        closesAt: game.closesAt,
+        results: game.results ?? null,
+        updatedAt: now
+      };
+      inMemoryGamesById.set(gameId, updated);
+      return { game: buildGameSummary(updated) };
     },
 
     async upsertUser(googleIdentity, preferredDisplayName) {
@@ -594,6 +882,217 @@ async function createDynamoStore() {
       };
     },
 
+    async listCompetitorLists() {
+      const items = await listCompetitorListsFromDynamoScan(
+        dynamodbClient,
+        ScanCommand,
+        tableName
+      );
+      return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async getCompetitorList(competitorListId) {
+      const response = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${COMPETITOR_LIST_PK_PREFIX}${competitorListId}`,
+            sk: COMPETITOR_LIST_SK_META
+          }
+        })
+      );
+      const item = response.Item;
+      if (!item) {
+        return null;
+      }
+      return {
+        competitorListId: String(item.competitorListId),
+        name: String(item.name),
+        competitors: Array.isArray(item.competitors) ? item.competitors : [],
+        updatedAt: String(item.updatedAt)
+      };
+    },
+
+    async createCompetitorList(actor, list) {
+      const now = new Date().toISOString();
+      const item = {
+        pk: `${COMPETITOR_LIST_PK_PREFIX}${list.id}`,
+        sk: COMPETITOR_LIST_SK_META,
+        itemType: "competitor_list",
+        competitorListId: list.id,
+        name: list.name,
+        competitors: list.competitors,
+        createdAt: now,
+        updatedAt: now
+      };
+      try {
+        await dynamodbClient.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: item,
+            ConditionExpression: "attribute_not_exists(pk)"
+          })
+        );
+      } catch (error) {
+        if (error && error.name === "ConditionalCheckFailedException") {
+          return { conflict: true };
+        }
+        throw error;
+      }
+      return {
+        list: {
+          competitorListId: list.id,
+          name: list.name,
+          competitors: list.competitors,
+          updatedAt: now
+        }
+      };
+    },
+
+    async updateCompetitorList(actor, competitorListId, list) {
+      const existing = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${COMPETITOR_LIST_PK_PREFIX}${competitorListId}`,
+            sk: COMPETITOR_LIST_SK_META
+          }
+        })
+      );
+      if (!existing.Item) {
+        return { notFound: true };
+      }
+      const now = new Date().toISOString();
+      await dynamodbClient.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            pk: `${COMPETITOR_LIST_PK_PREFIX}${competitorListId}`,
+            sk: COMPETITOR_LIST_SK_META,
+            itemType: "competitor_list",
+            competitorListId,
+            name: list.name,
+            competitors: list.competitors,
+            createdAt: existing.Item.createdAt ?? now,
+            updatedAt: now
+          }
+        })
+      );
+      return {
+        list: {
+          competitorListId,
+          name: list.name,
+          competitors: list.competitors,
+          updatedAt: now
+        }
+      };
+    },
+
+    async listGames() {
+      const items = await listGamesFromDynamoScan(dynamodbClient, ScanCommand, tableName);
+      return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async getGame(gameId) {
+      const response = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${GAME_PK_PREFIX}${gameId}`,
+            sk: GAME_SK_META
+          }
+        })
+      );
+      const item = response.Item;
+      if (!item) {
+        return null;
+      }
+      return {
+        gameId: String(item.gameId),
+        name: String(item.name),
+        competitorListId: String(item.competitorListId),
+        closesAt: String(item.closesAt),
+        updatedAt: String(item.updatedAt),
+        results: Array.isArray(item.results)
+          ? item.results.map((entry) => String(entry))
+          : null
+      };
+    },
+
+    async createGame(actor, game) {
+      const now = new Date().toISOString();
+      const item = {
+        pk: `${GAME_PK_PREFIX}${game.id}`,
+        sk: GAME_SK_META,
+        itemType: "game",
+        gameId: game.id,
+        name: game.name,
+        competitorListId: game.competitorListId,
+        closesAt: game.closesAt,
+        results: game.results ?? null,
+        createdAt: now,
+        updatedAt: now
+      };
+      try {
+        await dynamodbClient.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: item,
+            ConditionExpression: "attribute_not_exists(pk)"
+          })
+        );
+      } catch (error) {
+        if (error && error.name === "ConditionalCheckFailedException") {
+          return { conflict: true };
+        }
+        throw error;
+      }
+      return { game: buildGameSummary({ ...item, results: item.results }) };
+    },
+
+    async updateGame(actor, gameId, game) {
+      const existing = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${GAME_PK_PREFIX}${gameId}`,
+            sk: GAME_SK_META
+          }
+        })
+      );
+      if (!existing.Item) {
+        return { notFound: true };
+      }
+      const now = new Date().toISOString();
+      await dynamodbClient.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            pk: `${GAME_PK_PREFIX}${gameId}`,
+            sk: GAME_SK_META,
+            itemType: "game",
+            gameId,
+            name: game.name,
+            competitorListId: game.competitorListId,
+            closesAt: game.closesAt,
+            results: game.results ?? null,
+            createdAt: existing.Item.createdAt ?? now,
+            updatedAt: now
+          }
+        })
+      );
+      return {
+        game: {
+          gameId,
+          name: game.name,
+          competitorListId: game.competitorListId,
+          closesAt: game.closesAt,
+          updatedAt: now,
+          results: game.results ?? null
+        }
+      };
+    },
+
     async upsertUser(googleIdentity, preferredDisplayName) {
       const now = new Date().toISOString();
       const existing = await dynamodbClient.send(
@@ -829,9 +1328,15 @@ function readPath(event) {
   const path = event?.rawPath ?? "/";
   const requestPath = String(path);
   const projectMatch = requestPath.match(/^\/api\/projects\/([^/]+)$/);
+  const competitorListMatch = requestPath.match(/^\/api\/competitor-lists\/([^/]+)$/);
+  const gameMatch = requestPath.match(/^\/api\/games\/([^/]+)$/);
   return {
     path: requestPath,
-    projectId: projectMatch ? decodeURIComponent(projectMatch[1]) : null
+    projectId: projectMatch ? decodeURIComponent(projectMatch[1]) : null,
+    competitorListId: competitorListMatch
+      ? decodeURIComponent(competitorListMatch[1])
+      : null,
+    gameId: gameMatch ? decodeURIComponent(gameMatch[1]) : null
   };
 }
 
@@ -869,6 +1374,16 @@ function requireActor(actor) {
   return null;
 }
 
+function requireAdmin(actor) {
+  if (!actor) {
+    return json(401, { message: "Authentication required." });
+  }
+  if (!actor.isAdmin) {
+    return json(403, { message: "Administrator access required." });
+  }
+  return null;
+}
+
 async function withOwnerDisplayName(store, project) {
   if (!project) {
     return null;
@@ -902,7 +1417,7 @@ async function withOwnerDisplayNames(store, projects) {
 export async function handler(event) {
   try {
     const method = event?.requestContext?.http?.method ?? "GET";
-    const { path, projectId } = readPath(event);
+    const { path, projectId, competitorListId, gameId } = readPath(event);
 
     if (method === "GET" && path === "/api/health") {
       return json(200, {
@@ -1103,6 +1618,120 @@ export async function handler(event) {
           return json(409, { message: "Project name is already in use." });
         }
         return json(200, { project: await withOwnerDisplayName(store, updated.project) });
+      } catch (error) {
+        return json(400, {
+          message: error instanceof Error ? error.message : "Invalid request."
+        });
+      }
+    }
+
+    if (method === "GET" && path === "/api/competitor-lists") {
+      const lists = await store.listCompetitorLists();
+      return json(200, { lists });
+    }
+
+    if (method === "POST" && path === "/api/competitor-lists") {
+      const unauthorized = requireAdmin(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const body = await parseJsonBody(event?.body ?? "");
+        const list = parseCompetitorListInput(body);
+        const created = await store.createCompetitorList(actor, list);
+        if (created.conflict) {
+          return json(409, { message: "Competitor list id already exists." });
+        }
+        return json(201, { list: created.list });
+      } catch (error) {
+        return json(400, {
+          message: error instanceof Error ? error.message : "Invalid request."
+        });
+      }
+    }
+
+    if (competitorListId && method === "GET") {
+      const list = await store.getCompetitorList(competitorListId);
+      if (!list) {
+        return json(404, { message: "Competitor list not found." });
+      }
+      return json(200, { list });
+    }
+
+    if (competitorListId && method === "PUT") {
+      const unauthorized = requireAdmin(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const body = await parseJsonBody(event?.body ?? "");
+        const list = parseCompetitorListInput({ ...body, id: competitorListId });
+        const updated = await store.updateCompetitorList(actor, competitorListId, list);
+        if (updated.notFound) {
+          return json(404, { message: "Competitor list not found." });
+        }
+        return json(200, { list: updated.list });
+      } catch (error) {
+        return json(400, {
+          message: error instanceof Error ? error.message : "Invalid request."
+        });
+      }
+    }
+
+    if (method === "GET" && path === "/api/games") {
+      const games = await store.listGames();
+      return json(200, { games });
+    }
+
+    if (method === "POST" && path === "/api/games") {
+      const unauthorized = requireAdmin(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const body = await parseJsonBody(event?.body ?? "");
+        const game = parseGameInput(body);
+        const competitorList = await store.getCompetitorList(game.competitorListId);
+        if (!competitorList) {
+          return json(400, { message: "Unknown competitorListId." });
+        }
+        const created = await store.createGame(actor, game);
+        if (created.conflict) {
+          return json(409, { message: "Game id already exists." });
+        }
+        return json(201, { game: created.game });
+      } catch (error) {
+        return json(400, {
+          message: error instanceof Error ? error.message : "Invalid request."
+        });
+      }
+    }
+
+    if (gameId && method === "GET") {
+      const game = await store.getGame(gameId);
+      if (!game) {
+        return json(404, { message: "Game not found." });
+      }
+      return json(200, { game });
+    }
+
+    if (gameId && method === "PUT") {
+      const unauthorized = requireAdmin(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const body = await parseJsonBody(event?.body ?? "");
+        const game = parseGameInput({ ...body, id: gameId });
+        const competitorList = await store.getCompetitorList(game.competitorListId);
+        if (!competitorList) {
+          return json(400, { message: "Unknown competitorListId." });
+        }
+        const updated = await store.updateGame(actor, gameId, game);
+        if (updated.notFound) {
+          return json(404, { message: "Game not found." });
+        }
+        return json(200, { game: updated.game });
       } catch (error) {
         return json(400, {
           message: error instanceof Error ? error.message : "Invalid request."
