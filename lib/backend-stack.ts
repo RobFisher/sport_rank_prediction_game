@@ -148,6 +148,21 @@ export class BackendStack extends Stack {
       methods: [HttpMethod.GET, HttpMethod.PUT],
       integration
     });
+    api.addRoutes({
+      path: "/api/games/{gameId}/predictions",
+      methods: [HttpMethod.GET],
+      integration
+    });
+    api.addRoutes({
+      path: "/api/predictions",
+      methods: [HttpMethod.POST],
+      integration
+    });
+    api.addRoutes({
+      path: "/api/predictions/{predictionId}",
+      methods: [HttpMethod.GET, HttpMethod.PUT],
+      integration
+    });
 
     this.apiBaseUrl = api.apiEndpoint;
     this.apiDomainName = Fn.select(2, Fn.split("/", api.apiEndpoint));

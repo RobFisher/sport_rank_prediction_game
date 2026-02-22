@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Prediction, PredictionType } from "../predictionModel.js";
+import type { Prediction } from "../predictionModel.js";
 
 interface SavePredictionDialogProps {
   open: boolean;
   prediction: Prediction | null;
-  onSave: (type: PredictionType, name: string) => void;
+  onSave: (name: string) => void;
   onClose: () => void;
 }
 
@@ -14,12 +14,10 @@ export function SavePredictionDialog({
   onSave,
   onClose
 }: SavePredictionDialogProps) {
-  const [type, setType] = useState<PredictionType>("fun");
   const [name, setName] = useState("");
 
   useEffect(() => {
     if (open && prediction) {
-      setType(prediction.type);
       setName(prediction.name);
     }
   }, [open, prediction]);
@@ -29,8 +27,7 @@ export function SavePredictionDialog({
   }
 
   const trimmedName = name.trim();
-  const requiresName = type === "fun";
-  const canSave = !requiresName || trimmedName.length > 0;
+  const canSave = prediction.type === "fun" && trimmedName.length > 0;
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -41,30 +38,27 @@ export function SavePredictionDialog({
           if (!canSave) {
             return;
           }
-          onSave(type, trimmedName);
+          onSave(trimmedName);
         }}
       >
         <h2>Save prediction</h2>
-        <label>
-          Prediction type
-          <select value={type} onChange={(event) => setType(event.target.value as PredictionType)}>
-            <option value="competition">Competition</option>
-            <option value="fun">Fun</option>
-          </select>
-        </label>
+        <p className="modal-support">
+          Prediction type: {prediction.type === "competition" ? "Competition" : "Fun"}
+        </p>
         <label>
           Fun prediction name
           <input
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            disabled={type === "competition"}
-            placeholder={type === "competition" ? "Not used for competition entries" : ""}
+            disabled={prediction.type === "competition"}
+            placeholder={
+              prediction.type === "competition" ? "Not used for competition entries" : ""
+            }
           />
         </label>
         <p className="modal-support">
-          Competition predictions are locked after the closing time. Fun predictions can be
-          edited later.
+          Competition predictions are locked once saved. Fun predictions can be edited later.
         </p>
         <div className="modal-actions">
           <button type="button" className="modal-cancel" onClick={onClose}>

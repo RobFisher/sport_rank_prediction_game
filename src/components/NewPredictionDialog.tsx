@@ -4,6 +4,7 @@ import type { Game, PredictionType } from "../predictionModel.js";
 interface NewPredictionDialogProps {
   open: boolean;
   games: Game[];
+  initialGameId?: string | null;
   onCreate: (gameId: string, type: PredictionType) => void;
   onClose: () => void;
 }
@@ -11,6 +12,7 @@ interface NewPredictionDialogProps {
 export function NewPredictionDialog({
   open,
   games,
+  initialGameId,
   onCreate,
   onClose
 }: NewPredictionDialogProps) {
@@ -20,10 +22,14 @@ export function NewPredictionDialog({
 
   useEffect(() => {
     if (open) {
-      setGameId(gameOptions[0]?.id ?? "");
+      const preferred =
+        initialGameId && gameOptions.some((game) => game.id === initialGameId)
+          ? initialGameId
+          : gameOptions[0]?.id ?? "";
+      setGameId(preferred);
       setType("fun");
     }
-  }, [open, gameOptions]);
+  }, [open, gameOptions, initialGameId]);
 
   if (!open) {
     return null;
@@ -62,7 +68,7 @@ export function NewPredictionDialog({
           </select>
         </label>
         <p className="modal-support">
-          This creates a placeholder prediction pane. Save the prediction to finalize it.
+          This creates a prediction entry and opens it in a new pane.
         </p>
         <div className="modal-actions">
           <button type="button" className="modal-cancel" onClick={onClose}>

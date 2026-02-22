@@ -1,35 +1,27 @@
 interface WorkspaceHeaderProps {
   projectName: string;
   statusMessage: string;
-  canAddPane: boolean;
   googleConnected: boolean;
   googleBusy: boolean;
   googleAuthError: string | null;
   googleStatus: string | null;
   backendStatus: string | null;
   canUploadCompetitors: boolean;
-  canCreateGame: boolean;
-  onNewPrediction: () => void;
   onToggleGoogleConnection: () => void;
   onUploadCompetitors: () => void;
-  onCreateGame: () => void;
 }
 
 export function WorkspaceHeader({
   projectName,
   statusMessage,
-  canAddPane,
   googleConnected,
   googleBusy,
   googleAuthError,
   googleStatus,
   backendStatus,
   canUploadCompetitors,
-  canCreateGame,
-  onNewPrediction,
   onToggleGoogleConnection,
-  onUploadCompetitors,
-  onCreateGame
+  onUploadCompetitors
 }: WorkspaceHeaderProps) {
   return (
     <header className="workspace-header">
@@ -37,23 +29,15 @@ export function WorkspaceHeader({
         <p className="eyebrow">Prototype UI</p>
         <h1>Sport Rank Prediction Game - {projectName}</h1>
         <p className="subtitle">
-          Reorder competitors within each prediction pane. Backend connections are
-          placeholders for now.
+          Reorder competitors within each prediction pane and save predictions to the
+          backend.
         </p>
       </div>
       <div className="workspace-actions">
         <div className="workspace-primary-actions">
-          <button onClick={onNewPrediction} disabled={!canAddPane}>
-            New Prediction
-          </button>
           {canUploadCompetitors && (
             <button onClick={onUploadCompetitors} title="Upload competitor list JSON">
               Admin: Upload Competitors
-            </button>
-          )}
-          {canCreateGame && (
-            <button onClick={onCreateGame} title="Create a new game">
-              Admin: Create Game
             </button>
           )}
           <button

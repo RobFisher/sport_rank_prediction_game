@@ -29,6 +29,9 @@ export interface Prediction {
   name: string;
   competitorIds: string[];
   createdAt: string;
+  updatedAt?: string;
+  ownerUserId?: string;
+  ownerDisplayName?: string;
 }
 
 export interface SeedData {
@@ -133,12 +136,14 @@ export function createPredictionFromGame(
   type: PredictionType,
   name: string
 ): Prediction {
+  const createdAt = new Date().toISOString();
   return {
     id,
     gameId: game.id,
     type,
     name,
     competitorIds: competitorList.competitors.map((competitor) => competitor.id),
-    createdAt: new Date().toISOString()
+    createdAt,
+    updatedAt: createdAt
   };
 }

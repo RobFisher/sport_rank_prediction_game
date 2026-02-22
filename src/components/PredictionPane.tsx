@@ -10,6 +10,8 @@ interface PredictionPaneProps {
   onMoveCompetitor: (predictionId: string, fromIndex: number, toIndex: number) => void;
   onSavePrediction: (predictionId: string) => void;
   onRemovePane: (paneIndex: number) => void;
+  saveDisabled?: boolean;
+  saveLabel?: string;
 }
 
 export function PredictionPane({
@@ -20,7 +22,9 @@ export function PredictionPane({
   competitorList,
   onMoveCompetitor,
   onSavePrediction,
-  onRemovePane
+  onRemovePane,
+  saveDisabled,
+  saveLabel
 }: PredictionPaneProps) {
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -45,8 +49,12 @@ export function PredictionPane({
           </span>
           <span className="pane-meta">{subtitle}</span>
         </div>
-        <button className="pane-export" onClick={() => onSavePrediction(prediction.id)}>
-          Save
+        <button
+          className="pane-export"
+          onClick={() => onSavePrediction(prediction.id)}
+          disabled={saveDisabled}
+        >
+          {saveLabel ?? "Save"}
         </button>
         <button
           className="pane-close"

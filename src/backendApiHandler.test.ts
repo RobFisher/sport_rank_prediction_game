@@ -5,10 +5,19 @@ import assert from "node:assert/strict";
 import {
   listCompetitorListsFromDynamoScan,
   listGamesFromDynamoScan,
-  listProjectSummariesFromDynamoScan
+  listProjectSummariesFromDynamoScan,
+  listPredictionsForGameFromDynamoQuery
 } from "../backend/api-handler.mjs";
 
 class FakeScanCommand {
+  input: Record<string, unknown>;
+
+  constructor(input: Record<string, unknown>) {
+    this.input = input;
+  }
+}
+
+class FakeQueryCommand {
   input: Record<string, unknown>;
 
   constructor(input: Record<string, unknown>) {
@@ -266,6 +275,108 @@ test("listGamesFromDynamoScan follows LastEvaluatedKey across pages", async () =
       closesAt: "2026-01-03T00:00:00.000Z",
       updatedAt: "2026-01-03T00:00:00.000Z",
       results: null
+    }
+  ]);
+});
+
+test("listPredictionsForGameFromDynamoQuery follows LastEvaluatedKey across pages", async () => {
+  const queryInputs: Array<Record<string, unknown>> = [];
+  const responses = [
+    {
+      Items: [
+        {
+          predictionId: "prediction-1",
+          gameId: "game-1",
+          ownerUserId: "user-a",
+          ownerDisplayName: "User A",
+          type: "competition",
+          name: "",
+          competitorIds: ["c-1", "c-2"],
+          createdAt: "2026-02-25T00:00:00.000Z",
+          updatedAt: "2026-02-25T00:00:00.000Z"
+        }
+      ],
+      LastEvaluatedKey: {
+        pk: "PREDICTION#prediction-1",
+        sk: "META"
+      }
+    },
+    {
+      Items: [
+        {
+          predictionId: "prediction-2",
+          gameId: "game-1",
+          ownerUserId: "user-b",
+          ownerDisplayName: "User B",
+          type: "fun",
+          name: "My Fun Pick",
+          competitorIds: ["c-3", "c-4"],
+          createdAt: "2026-02-26T00:00:00.000Z",
+          updatedAt: "2026-02-26T00:00:00.000Z"
+        }
+      ]
+    }
+  ];
+  let responseIndex = 0;
+  const fakeClient = {
+    async send(command: { input: Record<string, unknown> }) {
+      queryInputs.push(command.input);
+      const nextResponse = responses[responseIndex];
+      responseIndex += 1;
+      return nextResponse;
+    }
+  };
+
+  const predictions = await listPredictionsForGameFromDynamoQuery(
+    fakeClient,
+    FakeQueryCommand,
+    "AppTable",
+    "game-1"
+  );
+
+  assert.equal(queryInputs.length, 2);
+  assert.deepEqual(queryInputs[0], {
+    TableName: "AppTable",
+    IndexName: "gsi1",
+    KeyConditionExpression: "gsi1pk = :gsi1pk",
+    ExpressionAttributeValues: {
+      ":gsi1pk": "GAME#game-1"
+    }
+  });
+  assert.deepEqual(queryInputs[1], {
+    TableName: "AppTable",
+    IndexName: "gsi1",
+    KeyConditionExpression: "gsi1pk = :gsi1pk",
+    ExpressionAttributeValues: {
+      ":gsi1pk": "GAME#game-1"
+    },
+    ExclusiveStartKey: {
+      pk: "PREDICTION#prediction-1",
+      sk: "META"
+    }
+  });
+  assert.deepEqual(predictions, [
+    {
+      predictionId: "prediction-1",
+      gameId: "game-1",
+      ownerUserId: "user-a",
+      ownerDisplayName: "User A",
+      type: "competition",
+      name: "",
+      competitorIds: ["c-1", "c-2"],
+      createdAt: "2026-02-25T00:00:00.000Z",
+      updatedAt: "2026-02-25T00:00:00.000Z"
+    },
+    {
+      predictionId: "prediction-2",
+      gameId: "game-1",
+      ownerUserId: "user-b",
+      ownerDisplayName: "User B",
+      type: "fun",
+      name: "My Fun Pick",
+      competitorIds: ["c-3", "c-4"],
+      createdAt: "2026-02-26T00:00:00.000Z",
+      updatedAt: "2026-02-26T00:00:00.000Z"
     }
   ]);
 });

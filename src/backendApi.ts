@@ -39,6 +39,20 @@ export interface BackendGame {
   results: string[] | null;
 }
 
+export type BackendPredictionType = "competition" | "fun";
+
+export interface BackendPrediction {
+  predictionId: string;
+  gameId: string;
+  ownerUserId: string;
+  ownerDisplayName: string;
+  type: BackendPredictionType;
+  name: string;
+  competitorIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BackendMeResponse {
   authenticated: boolean;
   user: BackendSessionUser | null;
@@ -296,4 +310,79 @@ export async function updateGame(
   });
   const parsed = await parseResponse<{ game: BackendGame }>(response);
   return parsed.game;
+}
+
+export interface BackendPredictionInput {
+  id: string;
+  gameId: string;
+  type: BackendPredictionType;
+  name?: string;
+  competitorIds: string[];
+}
+
+export interface BackendPredictionUpdateInput {
+  name?: string;
+  competitorIds: string[];
+}
+
+export async function listPredictionsForGame(
+  gameId: string
+): Promise<BackendPrediction[]> {
+  const response = await fetch(
+    buildApiPath(`/api/games/${encodeURIComponent(gameId)}/predictions`),
+    {
+      method: "GET",
+      credentials: "include"
+    }
+  );
+  const parsed = await parseResponse<{ predictions: BackendPrediction[] }>(response);
+  return parsed.predictions;
+}
+
+export async function getPrediction(
+  predictionId: string
+): Promise<BackendPrediction> {
+  const response = await fetch(
+    buildApiPath(`/api/predictions/${encodeURIComponent(predictionId)}`),
+    {
+      method: "GET",
+      credentials: "include"
+    }
+  );
+  const parsed = await parseResponse<{ prediction: BackendPrediction }>(response);
+  return parsed.prediction;
+}
+
+export async function createPrediction(
+  payload: BackendPredictionInput
+): Promise<BackendPrediction> {
+  const response = await fetch(buildApiPath("/api/predictions"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify(payload)
+  });
+  const parsed = await parseResponse<{ prediction: BackendPrediction }>(response);
+  return parsed.prediction;
+}
+
+export async function updatePrediction(
+  predictionId: string,
+  payload: BackendPredictionUpdateInput
+): Promise<BackendPrediction> {
+  const response = await fetch(
+    buildApiPath(`/api/predictions/${encodeURIComponent(predictionId)}`),
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify(payload)
+    }
+  );
+  const parsed = await parseResponse<{ prediction: BackendPrediction }>(response);
+  return parsed.prediction;
 }

@@ -11,6 +11,11 @@ const COMPETITOR_LIST_PK_PREFIX = "COMPETITOR_LIST#";
 const COMPETITOR_LIST_SK_META = "META";
 const GAME_PK_PREFIX = "GAME#";
 const GAME_SK_META = "META";
+const PREDICTION_PK_PREFIX = "PREDICTION#";
+const PREDICTION_SK_META = "META";
+const PREDICTION_GAME_GSI_PK_PREFIX = "GAME#";
+const PREDICTION_COMPETITION_LOCK_PK_PREFIX = "PREDICTION_COMPETITION#";
+const PREDICTION_COMPETITION_LOCK_SK = "LOCK";
 const USER_PK_PREFIX = "USER#";
 const USER_SK_PROFILE = "PROFILE";
 const SESSION_PK_PREFIX = "SESSION#";
@@ -21,6 +26,8 @@ const inMemoryProjectsById = new Map();
 const inMemoryProjectIdByNameKey = new Map();
 const inMemoryCompetitorListsById = new Map();
 const inMemoryGamesById = new Map();
+const inMemoryPredictionsById = new Map();
+const inMemoryCompetitionLockByGameUser = new Map();
 const inMemoryUsersById = new Map();
 const inMemorySessionsById = new Map();
 
@@ -145,6 +152,58 @@ function parseGameInput(payload) {
     competitorListId,
     closesAt: closesAt.toISOString(),
     results
+  };
+}
+
+function parsePredictionInput(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Prediction must be an object.");
+  }
+  const id = String(payload.id ?? "").trim();
+  const gameId = String(payload.gameId ?? "").trim();
+  const type = String(payload.type ?? "").trim();
+  const name = String(payload.name ?? "").trim();
+  const competitorIds = Array.isArray(payload.competitorIds)
+    ? payload.competitorIds.map((entry) => String(entry))
+    : null;
+  if (!id) {
+    throw new Error("Prediction id is required.");
+  }
+  if (!gameId) {
+    throw new Error("Prediction gameId is required.");
+  }
+  if (type !== "competition" && type !== "fun") {
+    throw new Error('Prediction type must be "competition" or "fun".');
+  }
+  if (!competitorIds || competitorIds.length === 0) {
+    throw new Error("Prediction competitorIds is required.");
+  }
+  if (type === "competition" && name) {
+    throw new Error("Competition predictions must not include a name.");
+  }
+  return {
+    id,
+    gameId,
+    type,
+    name,
+    competitorIds
+  };
+}
+
+function parsePredictionUpdateInput(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Prediction update must be an object.");
+  }
+  const name = String(payload.name ?? "").trim();
+  const competitorIds = Array.isArray(payload.competitorIds)
+    ? payload.competitorIds.map((entry) => String(entry))
+    : null;
+  if (!competitorIds || competitorIds.length === 0) {
+    throw new Error("Prediction competitorIds is required.");
+  }
+  return {
+    name,
+    competitorIds
   };
 }
 
@@ -409,6 +468,50 @@ export async function listGamesFromDynamoScan(dynamodbClient, ScanCommand, table
   return games;
 }
 
+export async function listPredictionsForGameFromDynamoQuery(
+  dynamodbClient,
+  QueryCommand,
+  tableName,
+  gameId
+) {
+  const predictions = [];
+  let lastEvaluatedKey = undefined;
+
+  do {
+    const response = await dynamodbClient.send(
+      new QueryCommand({
+        TableName: tableName,
+        IndexName: "gsi1",
+        KeyConditionExpression: "gsi1pk = :gsi1pk",
+        ExpressionAttributeValues: {
+          ":gsi1pk": `${PREDICTION_GAME_GSI_PK_PREFIX}${gameId}`
+        },
+        ...(lastEvaluatedKey ? { ExclusiveStartKey: lastEvaluatedKey } : {})
+      })
+    );
+
+    for (const item of response.Items ?? []) {
+      predictions.push({
+        predictionId: String(item.predictionId),
+        gameId: String(item.gameId),
+        ownerUserId: String(item.ownerUserId),
+        ownerDisplayName: String(item.ownerDisplayName),
+        type: String(item.type),
+        name: String(item.name ?? ""),
+        competitorIds: Array.isArray(item.competitorIds)
+          ? item.competitorIds.map((entry) => String(entry))
+          : [],
+        createdAt: String(item.createdAt),
+        updatedAt: String(item.updatedAt)
+      });
+    }
+
+    lastEvaluatedKey = response.LastEvaluatedKey;
+  } while (lastEvaluatedKey);
+
+  return predictions;
+}
+
 function createInMemoryStore() {
   return {
     async listProjects() {
@@ -575,6 +678,95 @@ function createInMemoryStore() {
       return { game: buildGameSummary(updated) };
     },
 
+    async listPredictionsForGame(gameId) {
+      return [...inMemoryPredictionsById.values()]
+        .filter((prediction) => prediction.gameId === gameId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((prediction) => ({
+          predictionId: prediction.predictionId,
+          gameId: prediction.gameId,
+          ownerUserId: prediction.ownerUserId,
+          ownerDisplayName: prediction.ownerDisplayName,
+          type: prediction.type,
+          name: prediction.name ?? "",
+          competitorIds: prediction.competitorIds,
+          createdAt: prediction.createdAt,
+          updatedAt: prediction.updatedAt
+        }));
+    },
+
+    async getPrediction(predictionId) {
+      const prediction = inMemoryPredictionsById.get(predictionId);
+      if (!prediction) {
+        return null;
+      }
+      return {
+        predictionId: prediction.predictionId,
+        gameId: prediction.gameId,
+        ownerUserId: prediction.ownerUserId,
+        ownerDisplayName: prediction.ownerDisplayName,
+        type: prediction.type,
+        name: prediction.name ?? "",
+        competitorIds: prediction.competitorIds,
+        createdAt: prediction.createdAt,
+        updatedAt: prediction.updatedAt
+      };
+    },
+
+    async createPrediction(actor, prediction, game) {
+      if (inMemoryPredictionsById.has(prediction.id)) {
+        return { conflict: true };
+      }
+      const gameId = game.gameId ?? game.id;
+      if (prediction.type === "competition") {
+        const lockKey = `${gameId}#${actor.userId}`;
+        if (inMemoryCompetitionLockByGameUser.has(lockKey)) {
+          return { conflict: true };
+        }
+        const closesAt = Date.parse(game.closesAt);
+        if (Number.isFinite(closesAt) && closesAt <= Date.now()) {
+          return { closed: true };
+        }
+        inMemoryCompetitionLockByGameUser.set(lockKey, prediction.id);
+      }
+      const now = new Date().toISOString();
+      const stored = {
+        predictionId: prediction.id,
+        gameId: prediction.gameId,
+        ownerUserId: actor.userId,
+        ownerDisplayName: actor.displayName,
+        type: prediction.type,
+        name: prediction.name ?? "",
+        competitorIds: prediction.competitorIds,
+        createdAt: now,
+        updatedAt: now
+      };
+      inMemoryPredictionsById.set(prediction.id, stored);
+      return { prediction: stored };
+    },
+
+    async updatePrediction(actor, predictionId, prediction) {
+      const existing = inMemoryPredictionsById.get(predictionId);
+      if (!existing) {
+        return { notFound: true };
+      }
+      if (existing.ownerUserId !== actor.userId) {
+        return { forbidden: true };
+      }
+      if (existing.type === "competition") {
+        return { locked: true };
+      }
+      const now = new Date().toISOString();
+      const updated = {
+        ...existing,
+        name: prediction.name ?? "",
+        competitorIds: prediction.competitorIds,
+        updatedAt: now
+      };
+      inMemoryPredictionsById.set(predictionId, updated);
+      return { prediction: updated };
+    },
+
     async upsertUser(googleIdentity, preferredDisplayName) {
       const displayName =
         normalizeDisplayName(preferredDisplayName) ||
@@ -667,6 +859,7 @@ async function createDynamoStore() {
     DynamoDBDocumentClient,
     GetCommand,
     PutCommand,
+    QueryCommand,
     ScanCommand,
     DeleteCommand,
     UpdateCommand
@@ -1094,6 +1287,195 @@ async function createDynamoStore() {
       };
     },
 
+    async listPredictionsForGame(gameId) {
+      const items = await listPredictionsForGameFromDynamoQuery(
+        dynamodbClient,
+        QueryCommand,
+        tableName,
+        gameId
+      );
+      return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    },
+
+    async getPrediction(predictionId) {
+      const response = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${PREDICTION_PK_PREFIX}${predictionId}`,
+            sk: PREDICTION_SK_META
+          }
+        })
+      );
+      const item = response.Item;
+      if (!item) {
+        return null;
+      }
+      return {
+        predictionId: String(item.predictionId),
+        gameId: String(item.gameId),
+        ownerUserId: String(item.ownerUserId),
+        ownerDisplayName: String(item.ownerDisplayName),
+        type: String(item.type),
+        name: String(item.name ?? ""),
+        competitorIds: Array.isArray(item.competitorIds)
+          ? item.competitorIds.map((entry) => String(entry))
+          : [],
+        createdAt: String(item.createdAt),
+        updatedAt: String(item.updatedAt)
+      };
+    },
+
+    async createPrediction(actor, prediction, game) {
+      let lockCreated = false;
+      const now = new Date().toISOString();
+      const gameId = game.gameId ?? game.id;
+      if (prediction.type === "competition") {
+        const closesAt = Date.parse(game.closesAt);
+        if (Number.isFinite(closesAt) && closesAt <= Date.now()) {
+          return { closed: true };
+        }
+        try {
+          await dynamodbClient.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: {
+                pk: `${PREDICTION_COMPETITION_LOCK_PK_PREFIX}${gameId}#${actor.userId}`,
+                sk: PREDICTION_COMPETITION_LOCK_SK,
+                itemType: "prediction_competition_lock",
+                predictionId: prediction.id,
+                gameId,
+                userId: actor.userId,
+                createdAt: now
+              },
+              ConditionExpression: "attribute_not_exists(pk)"
+            })
+          );
+          lockCreated = true;
+        } catch (error) {
+          if (error && error.name === "ConditionalCheckFailedException") {
+            return { conflict: true };
+          }
+          throw error;
+        }
+      }
+
+      const item = {
+        pk: `${PREDICTION_PK_PREFIX}${prediction.id}`,
+        sk: PREDICTION_SK_META,
+        itemType: "prediction",
+        predictionId: prediction.id,
+        gameId: prediction.gameId,
+        ownerUserId: actor.userId,
+        ownerDisplayName: actor.displayName,
+        type: prediction.type,
+        name: prediction.name ?? "",
+        competitorIds: prediction.competitorIds,
+        gsi1pk: `${PREDICTION_GAME_GSI_PK_PREFIX}${prediction.gameId}`,
+        gsi1sk: `PREDICTION#${now}#${prediction.id}`,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      try {
+        await dynamodbClient.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: item,
+            ConditionExpression: "attribute_not_exists(pk)"
+          })
+        );
+      } catch (error) {
+        if (lockCreated) {
+          await dynamodbClient.send(
+            new DeleteCommand({
+              TableName: tableName,
+              Key: {
+                pk: `${PREDICTION_COMPETITION_LOCK_PK_PREFIX}${gameId}#${actor.userId}`,
+                sk: PREDICTION_COMPETITION_LOCK_SK
+              }
+            })
+          );
+        }
+        if (error && error.name === "ConditionalCheckFailedException") {
+          return { conflict: true };
+        }
+        throw error;
+      }
+
+      return {
+        prediction: {
+          predictionId: prediction.id,
+          gameId: prediction.gameId,
+          ownerUserId: actor.userId,
+          ownerDisplayName: actor.displayName,
+          type: prediction.type,
+          name: prediction.name ?? "",
+          competitorIds: prediction.competitorIds,
+          createdAt: now,
+          updatedAt: now
+        }
+      };
+    },
+
+    async updatePrediction(actor, predictionId, prediction) {
+      const existing = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${PREDICTION_PK_PREFIX}${predictionId}`,
+            sk: PREDICTION_SK_META
+          }
+        })
+      );
+      if (!existing.Item) {
+        return { notFound: true };
+      }
+      if (String(existing.Item.ownerUserId) !== actor.userId) {
+        return { forbidden: true };
+      }
+      if (String(existing.Item.type) === "competition") {
+        return { locked: true };
+      }
+      const now = new Date().toISOString();
+      await dynamodbClient.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${PREDICTION_PK_PREFIX}${predictionId}`,
+            sk: PREDICTION_SK_META
+          },
+          UpdateExpression:
+            "SET #name = :name, #competitorIds = :competitorIds, #updatedAt = :updatedAt, #gsi1sk = :gsi1sk",
+          ExpressionAttributeNames: {
+            "#name": "name",
+            "#competitorIds": "competitorIds",
+            "#updatedAt": "updatedAt",
+            "#gsi1sk": "gsi1sk"
+          },
+          ExpressionAttributeValues: {
+            ":name": prediction.name ?? "",
+            ":competitorIds": prediction.competitorIds,
+            ":updatedAt": now,
+            ":gsi1sk": `PREDICTION#${now}#${predictionId}`
+          }
+        })
+      );
+      return {
+        prediction: {
+          predictionId,
+          gameId: String(existing.Item.gameId),
+          ownerUserId: String(existing.Item.ownerUserId),
+          ownerDisplayName: String(existing.Item.ownerDisplayName),
+          type: String(existing.Item.type),
+          name: prediction.name ?? "",
+          competitorIds: prediction.competitorIds,
+          createdAt: String(existing.Item.createdAt),
+          updatedAt: now
+        }
+      };
+    },
+
     async upsertUser(googleIdentity, preferredDisplayName) {
       const now = new Date().toISOString();
       const existing = await dynamodbClient.send(
@@ -1330,14 +1712,20 @@ function readPath(event) {
   const requestPath = String(path);
   const projectMatch = requestPath.match(/^\/api\/projects\/([^/]+)$/);
   const competitorListMatch = requestPath.match(/^\/api\/competitor-lists\/([^/]+)$/);
+  const gamePredictionsMatch = requestPath.match(/^\/api\/games\/([^/]+)\/predictions$/);
   const gameMatch = requestPath.match(/^\/api\/games\/([^/]+)$/);
+  const predictionMatch = requestPath.match(/^\/api\/predictions\/([^/]+)$/);
   return {
     path: requestPath,
     projectId: projectMatch ? decodeURIComponent(projectMatch[1]) : null,
     competitorListId: competitorListMatch
       ? decodeURIComponent(competitorListMatch[1])
       : null,
-    gameId: gameMatch ? decodeURIComponent(gameMatch[1]) : null
+    gameId: gameMatch ? decodeURIComponent(gameMatch[1]) : null,
+    gamePredictionsId: gamePredictionsMatch
+      ? decodeURIComponent(gamePredictionsMatch[1])
+      : null,
+    predictionId: predictionMatch ? decodeURIComponent(predictionMatch[1]) : null
   };
 }
 
@@ -1418,7 +1806,8 @@ async function withOwnerDisplayNames(store, projects) {
 export async function handler(event) {
   try {
     const method = event?.requestContext?.http?.method ?? "GET";
-    const { path, projectId, competitorListId, gameId } = readPath(event);
+    const { path, projectId, competitorListId, gameId, gamePredictionsId, predictionId } =
+      readPath(event);
 
     if (method === "GET" && path === "/api/health") {
       return json(200, {
@@ -1733,6 +2122,123 @@ export async function handler(event) {
           return json(404, { message: "Game not found." });
         }
         return json(200, { game: updated.game });
+      } catch (error) {
+        return json(400, {
+          message: error instanceof Error ? error.message : "Invalid request."
+        });
+      }
+    }
+
+    if (gamePredictionsId && method === "GET") {
+      const unauthorized = requireActor(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      const game = await store.getGame(gamePredictionsId);
+      if (!game) {
+        return json(404, { message: "Game not found." });
+      }
+      const predictions = await store.listPredictionsForGame(gamePredictionsId);
+      return json(200, { predictions });
+    }
+
+    if (method === "POST" && path === "/api/predictions") {
+      const unauthorized = requireActor(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const body = await parseJsonBody(event?.body ?? "");
+        const prediction = parsePredictionInput(body);
+        const game = await store.getGame(prediction.gameId);
+        if (!game) {
+          return json(400, { message: "Unknown gameId." });
+        }
+        const competitorList = await store.getCompetitorList(game.competitorListId);
+        if (!competitorList) {
+          return json(400, { message: "Unknown competitorListId." });
+        }
+        const competitorIds = new Set(
+          competitorList.competitors.map((competitor) => competitor.id)
+        );
+        const invalidIds = prediction.competitorIds.filter((id) => !competitorIds.has(id));
+        if (invalidIds.length > 0) {
+          return json(400, {
+            message: `Unknown competitor ids: ${invalidIds.join(", ")}`
+          });
+        }
+        const created = await store.createPrediction(actor, prediction, game);
+        if (created.conflict) {
+          return json(409, {
+            message:
+              prediction.type === "competition"
+                ? "Competition prediction already exists."
+                : "Prediction id already exists."
+          });
+        }
+        if (created.closed) {
+          return json(403, { message: "Competition predictions are closed." });
+        }
+        return json(201, { prediction: created.prediction });
+      } catch (error) {
+        return json(400, {
+          message: error instanceof Error ? error.message : "Invalid request."
+        });
+      }
+    }
+
+    if (predictionId && method === "GET") {
+      const unauthorized = requireActor(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      const prediction = await store.getPrediction(predictionId);
+      if (!prediction) {
+        return json(404, { message: "Prediction not found." });
+      }
+      return json(200, { prediction });
+    }
+
+    if (predictionId && method === "PUT") {
+      const unauthorized = requireActor(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const body = await parseJsonBody(event?.body ?? "");
+        const update = parsePredictionUpdateInput(body);
+        const existing = await store.getPrediction(predictionId);
+        if (!existing) {
+          return json(404, { message: "Prediction not found." });
+        }
+        const game = await store.getGame(existing.gameId);
+        if (!game) {
+          return json(400, { message: "Unknown gameId." });
+        }
+        const competitorList = await store.getCompetitorList(game.competitorListId);
+        if (!competitorList) {
+          return json(400, { message: "Unknown competitorListId." });
+        }
+        const competitorIds = new Set(
+          competitorList.competitors.map((competitor) => competitor.id)
+        );
+        const invalidIds = update.competitorIds.filter((id) => !competitorIds.has(id));
+        if (invalidIds.length > 0) {
+          return json(400, {
+            message: `Unknown competitor ids: ${invalidIds.join(", ")}`
+          });
+        }
+        const updated = await store.updatePrediction(actor, predictionId, update);
+        if (updated.notFound) {
+          return json(404, { message: "Prediction not found." });
+        }
+        if (updated.forbidden) {
+          return json(403, { message: "Only the prediction owner can update it." });
+        }
+        if (updated.locked) {
+          return json(409, { message: "Competition predictions cannot be updated." });
+        }
+        return json(200, { prediction: updated.prediction });
       } catch (error) {
         return json(400, {
           message: error instanceof Error ? error.message : "Invalid request."

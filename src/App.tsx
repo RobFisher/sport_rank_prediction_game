@@ -13,12 +13,17 @@ import {
   createBackendGoogleSession,
   createGame,
   getBackendMe,
+  getPrediction,
   listCompetitorLists,
   listGames,
+  listPredictionsForGame,
   logoutBackendSession,
+  createPrediction,
+  updatePrediction,
   updateCompetitorList,
   type BackendCompetitorList,
   type BackendGame,
+  type BackendPrediction,
   type BackendSessionUser
 } from "./backendApi.js";
 import { WorkspaceHeader } from "./components/WorkspaceHeader.js";
@@ -27,13 +32,24 @@ import { NewPredictionDialog } from "./components/NewPredictionDialog.js";
 import { SavePredictionDialog } from "./components/SavePredictionDialog.js";
 import { GoogleDisplayNameDialog } from "./components/GoogleDisplayNameDialog.js";
 import { CreateGameDialog } from "./components/CreateGameDialog.js";
+import { GamesPane } from "./components/GamesPane.js";
+import { GamePredictionsPane } from "./components/GamePredictionsPane.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
 const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
 
-function createPredictionId(counterRef: { current: number }): string {
-  counterRef.current += 1;
-  return `prediction-${counterRef.current}`;
+function createPredictionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `prediction-${crypto.randomUUID()}`;
+  }
+  return `prediction-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+}
+
+function createPaneId(prefix: string): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
 }
 
 function createGameId(name: string): string {
@@ -169,12 +185,42 @@ function toUiGame(game: BackendGame): Game {
   };
 }
 
+function toUiPrediction(prediction: BackendPrediction): Prediction {
+  return {
+    id: prediction.predictionId,
+    gameId: prediction.gameId,
+    type: prediction.type,
+    name: prediction.name,
+    competitorIds: prediction.competitorIds,
+    createdAt: prediction.createdAt,
+    updatedAt: prediction.updatedAt,
+    ownerUserId: prediction.ownerUserId,
+    ownerDisplayName: prediction.ownerDisplayName
+  };
+}
+
+function mergePredictions(existing: Prediction[], incoming: Prediction[]): Prediction[] {
+  const byId = new Map(existing.map((prediction) => [prediction.id, prediction]));
+  incoming.forEach((prediction) => {
+    byId.set(prediction.id, prediction);
+  });
+  return [...byId.values()];
+}
+
+type PaneDescriptor =
+  | { id: string; type: "games" }
+  | { id: string; type: "game-predictions"; gameId: string }
+  | { id: string; type: "prediction"; predictionId: string };
+
 export function App() {
   const [competitorLists, setCompetitorLists] = useState<CompetitorList[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [panePredictionIds, setPanePredictionIds] = useState<string[]>([]);
+  const [panes, setPanes] = useState<PaneDescriptor[]>([
+    { id: "games-pane", type: "games" }
+  ]);
   const [newPredictionDialogOpen, setNewPredictionDialogOpen] = useState(false);
+  const [newPredictionGameId, setNewPredictionGameId] = useState<string | null>(null);
   const [createGameDialogOpen, setCreateGameDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Loading data from backend...");
@@ -187,6 +233,8 @@ export function App() {
   const [backendSessionUser, setBackendSessionUser] = useState<BackendSessionUser | null>(
     null
   );
+  const [predictionsLoaded, setPredictionsLoaded] = useState(false);
+  const [predictionsLoading, setPredictionsLoading] = useState(false);
   const competitorListInputRef = useRef<HTMLInputElement | null>(null);
   const {
     googleToken,
@@ -196,7 +244,6 @@ export function App() {
     connectGoogle,
     disconnectGoogle
   } = useGoogleAuth();
-  const predictionIdCounter = useRef(predictions.length);
 
   const gamesById = useMemo(() => {
     return new Map(games.map((game) => [game.id, game]));
@@ -210,9 +257,15 @@ export function App() {
     return new Map(predictions.map((prediction) => [prediction.id, prediction]));
   }, [predictions]);
 
-  const panePredictions = panePredictionIds
-    .map((predictionId) => predictionsById.get(predictionId))
-    .filter((prediction): prediction is Prediction => Boolean(prediction));
+  const predictionsByGameId = useMemo(() => {
+    const map = new Map<string, Prediction[]>();
+    predictions.forEach((prediction) => {
+      const list = map.get(prediction.gameId) ?? [];
+      list.push(prediction);
+      map.set(prediction.gameId, list);
+    });
+    return map;
+  }, [predictions]);
 
   const googleConnected = Boolean(backendSessionUser);
   const isAdmin = Boolean(backendSessionUser?.isAdmin);
@@ -290,6 +343,53 @@ export function App() {
     setGames(loaded.map(toUiGame));
   };
 
+  const loadPredictionsForGames = async (gamesToLoad: Game[]) => {
+    if (!backendSessionUser || gamesToLoad.length === 0) {
+      setPredictions([]);
+      setPredictionsLoaded(false);
+      return;
+    }
+    setPredictionsLoading(true);
+    try {
+      const batches = await Promise.all(
+        gamesToLoad.map(async (game) => {
+          const predictionsForGame = await listPredictionsForGame(game.id);
+          return predictionsForGame.map(toUiPrediction);
+        })
+      );
+      setPredictions(mergePredictions([], batches.flat()));
+      setPredictionsLoaded(true);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error
+          ? `Failed to load predictions: ${error.message}`
+          : "Failed to load predictions."
+      );
+      setPredictionsLoaded(false);
+    } finally {
+      setPredictionsLoading(false);
+    }
+  };
+
+  const ensurePredictionsForGame = async (gameId: string) => {
+    if (!backendSessionUser) {
+      return;
+    }
+    if (predictionsByGameId.has(gameId)) {
+      return;
+    }
+    try {
+      const loaded = await listPredictionsForGame(gameId);
+      setPredictions((current) => mergePredictions(current, loaded.map(toUiPrediction)));
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error
+          ? `Failed to load predictions: ${error.message}`
+          : "Failed to load predictions."
+      );
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -320,6 +420,16 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!backendSessionUser) {
+      setPredictions([]);
+      setPredictionsLoaded(false);
+      setPredictionsLoading(false);
+      return;
+    }
+    void loadPredictionsForGames(games);
+  }, [backendSessionUser, games]);
 
   async function establishBackendSession(
     accessToken: string,
@@ -511,7 +621,7 @@ export function App() {
     );
   };
 
-  const handleCreatePrediction = (gameId: string, type: PredictionType) => {
+  const handleCreatePrediction = async (gameId: string, type: PredictionType) => {
     const game = gamesById.get(gameId);
     if (!game) {
       return;
@@ -521,90 +631,226 @@ export function App() {
       return;
     }
 
-    const newPrediction = createPredictionFromGame(
-      createPredictionId(predictionIdCounter),
-      game,
-      competitorList,
-      type,
-      ""
-    );
+    const predictionId = createPredictionId();
+    const draft = createPredictionFromGame(predictionId, game, competitorList, type, "");
 
-    setPredictions((current) => [...current, newPrediction]);
-    setPanePredictionIds((current) => [...current, newPrediction.id]);
-    setNewPredictionDialogOpen(false);
-    setStatusMessage("Created a new prediction pane using placeholder data.");
+    try {
+      const created = await createPrediction({
+        id: draft.id,
+        gameId: draft.gameId,
+        type: draft.type,
+        name: draft.name,
+        competitorIds: draft.competitorIds
+      });
+      const uiPrediction = toUiPrediction(created);
+      setPredictions((current) => mergePredictions(current, [uiPrediction]));
+      setPanes((current) => {
+        if (
+          current.some(
+            (pane) =>
+              pane.type === "prediction" && pane.predictionId === uiPrediction.id
+          )
+        ) {
+          return current;
+        }
+        return [
+          ...current,
+          {
+            id: createPaneId("prediction"),
+            type: "prediction",
+            predictionId: uiPrediction.id
+          }
+        ];
+      });
+      setNewPredictionDialogOpen(false);
+      setNewPredictionGameId(null);
+      setStatusMessage(`Created ${type} prediction for "${game.name}".`);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to create prediction."
+      );
+    }
   };
 
-  const handleSavePrediction = (predictionId: string, type: PredictionType, name: string) => {
-    setPredictions((current) =>
-      current.map((prediction) =>
-        prediction.id === predictionId
-          ? { ...prediction, type, name: type === "fun" ? name : "" }
-          : prediction
-      )
-    );
-    setSaveDialogPredictionId(null);
-    setStatusMessage("Prediction saved locally. Backend persistence is coming next.");
+  const handleSavePrediction = async (predictionId: string, name: string) => {
+    const prediction = predictionsById.get(predictionId);
+    if (!prediction) {
+      return;
+    }
+    if (prediction.type === "competition") {
+      setSaveDialogPredictionId(null);
+      setStatusMessage("Competition predictions cannot be edited after creation.");
+      return;
+    }
+    const trimmedName = name.trim();
+    try {
+      const updated = await updatePrediction(predictionId, {
+        name: trimmedName,
+        competitorIds: prediction.competitorIds
+      });
+      setPredictions((current) => mergePredictions(current, [toUiPrediction(updated)]));
+      setSaveDialogPredictionId(null);
+      setStatusMessage("Prediction saved.");
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to save prediction."
+      );
+    }
+  };
+
+  const handleOpenGamePredictions = (gameId: string) => {
+    void ensurePredictionsForGame(gameId);
+    setPanes((current) => {
+      if (current.some((pane) => pane.type === "game-predictions" && pane.gameId === gameId)) {
+        return current;
+      }
+      return [
+        ...current,
+        { id: createPaneId("game-predictions"), type: "game-predictions", gameId }
+      ];
+    });
+  };
+
+  const handleOpenPredictionPane = async (predictionId: string) => {
+    if (!predictionsById.has(predictionId)) {
+      try {
+        const loaded = await getPrediction(predictionId);
+        setPredictions((current) => mergePredictions(current, [toUiPrediction(loaded)]));
+      } catch (error) {
+        setStatusMessage(
+          error instanceof Error
+            ? error.message
+            : "Failed to load the selected prediction."
+        );
+        return;
+      }
+    }
+    setPanes((current) => {
+      if (current.some((pane) => pane.type === "prediction" && pane.predictionId === predictionId)) {
+        return current;
+      }
+      return [
+        ...current,
+        { id: createPaneId("prediction"), type: "prediction", predictionId }
+      ];
+    });
   };
 
   const handleRemovePane = (paneIndex: number) => {
-    setPanePredictionIds((current) => current.filter((_, index) => index !== paneIndex));
+    setPanes((current) => current.filter((_, index) => index !== paneIndex));
   };
 
   const activeSavePrediction = saveDialogPredictionId
     ? predictionsById.get(saveDialogPredictionId) ?? null
     : null;
 
+  const predictionCountsByGameId = useMemo(() => {
+    const counts = new Map<string, number>();
+    predictions.forEach((prediction) => {
+      counts.set(prediction.gameId, (counts.get(prediction.gameId) ?? 0) + 1);
+    });
+    return counts;
+  }, [predictions]);
+
   return (
     <div className="workspace">
       <WorkspaceHeader
         projectName="F1 2026 Predictions"
         statusMessage={statusMessage}
-        canAddPane={games.length > 0}
         googleConnected={googleConnected}
         googleBusy={googleAuthLoading}
         googleAuthError={googleAuthError}
         googleStatus={googleStatus}
         backendStatus={backendStatus}
         canUploadCompetitors={isAdmin}
-        canCreateGame={isAdmin}
-        onNewPrediction={() => setNewPredictionDialogOpen(true)}
         onToggleGoogleConnection={toggleGoogleConnection}
         onUploadCompetitors={handleUploadCompetitors}
-        onCreateGame={() => setCreateGameDialogOpen(true)}
       />
       <section className="pane-grid">
-        {panePredictions.map((prediction, paneIndex) => {
-          const game = gamesById.get(prediction.gameId);
-          if (!game) {
-            return null;
+        {panes.map((pane, paneIndex) => {
+          if (pane.type === "games") {
+            return (
+              <GamesPane
+                key={pane.id}
+                games={games}
+                predictionsLoaded={predictionsLoaded}
+                predictionCountsByGameId={predictionCountsByGameId}
+                canCreateGame={isAdmin}
+                onCreateGame={() => setCreateGameDialogOpen(true)}
+                onOpenGame={handleOpenGamePredictions}
+              />
+            );
           }
-          const competitorList = competitorListsById.get(game.competitorListId);
-          if (!competitorList) {
-            return null;
+          if (pane.type === "game-predictions") {
+            const game = gamesById.get(pane.gameId);
+            if (!game) {
+              return null;
+            }
+            const gamePredictions = predictionsByGameId.get(pane.gameId) ?? [];
+            const isLoading = predictionsLoading && gamePredictions.length === 0;
+            return (
+              <GamePredictionsPane
+                key={pane.id}
+                game={game}
+                predictions={gamePredictions}
+                canShowPredictions={googleConnected}
+                isLoading={isLoading}
+                canCreatePrediction={googleConnected}
+                onCreatePrediction={() => {
+                  setNewPredictionGameId(game.id);
+                  setNewPredictionDialogOpen(true);
+                }}
+                onOpenPrediction={handleOpenPredictionPane}
+                onClosePane={() => handleRemovePane(paneIndex)}
+                paneCount={panes.length}
+              />
+            );
           }
+          if (pane.type === "prediction") {
+            const prediction = predictionsById.get(pane.predictionId);
+            if (!prediction) {
+              return null;
+            }
+            const game = gamesById.get(prediction.gameId);
+            if (!game) {
+              return null;
+            }
+            const competitorList = competitorListsById.get(game.competitorListId);
+            if (!competitorList) {
+              return null;
+            }
 
-          return (
-            <PredictionPane
-              key={prediction.id}
-              paneIndex={paneIndex}
-              paneCount={panePredictions.length}
-              prediction={prediction}
-              game={game}
-              competitorList={competitorList}
-              onMoveCompetitor={handleMoveCompetitor}
-              onSavePrediction={(id) => setSaveDialogPredictionId(id)}
-              onRemovePane={handleRemovePane}
-            />
-          );
+            return (
+              <PredictionPane
+                key={pane.id}
+                paneIndex={paneIndex}
+                paneCount={panes.length}
+                prediction={prediction}
+                game={game}
+                competitorList={competitorList}
+                onMoveCompetitor={handleMoveCompetitor}
+                onSavePrediction={(id) => setSaveDialogPredictionId(id)}
+                onRemovePane={handleRemovePane}
+                saveDisabled={!googleConnected || prediction.type === "competition"}
+                saveLabel={
+                  prediction.type === "competition" ? "Locked" : "Save"
+                }
+              />
+            );
+          }
+          return null;
         })}
       </section>
 
       <NewPredictionDialog
         open={newPredictionDialogOpen}
         games={games}
+        initialGameId={newPredictionGameId}
         onCreate={handleCreatePrediction}
-        onClose={() => setNewPredictionDialogOpen(false)}
+        onClose={() => {
+          setNewPredictionDialogOpen(false);
+          setNewPredictionGameId(null);
+        }}
       />
       <CreateGameDialog
         open={createGameDialogOpen}
@@ -615,11 +861,11 @@ export function App() {
       <SavePredictionDialog
         open={saveDialogPredictionId !== null}
         prediction={activeSavePrediction}
-        onSave={(type, name) => {
+        onSave={(name) => {
           if (!saveDialogPredictionId) {
             return;
           }
-          handleSavePrediction(saveDialogPredictionId, type, name);
+          void handleSavePrediction(saveDialogPredictionId, name);
         }}
         onClose={() => setSaveDialogPredictionId(null)}
       />
