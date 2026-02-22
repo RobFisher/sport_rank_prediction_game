@@ -1,0 +1,42 @@
+{
+  "name": "sport-rank-prediction-game",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sport rank prediction game",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup": "npm ci",
+    "dev": "vite",
+    "dev:api": "node backend/local-api-server.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite preview",
+    "lint": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
+    "cdk:synth": "npm run build && cdk synth",
+    "deploy:backend:dev": "cdk deploy SportRankPredictionGameBackend-dev --require-approval never",
+    "deploy:dev": "npm run build && cdk deploy SportRankPredictionGame-dev --require-approval never",
+    "deploy:all:dev": "npm run build && cdk deploy SportRankPredictionGameBackend-dev SportRankPredictionGame-dev --require-approval never",
+    "destroy:backend:dev": "cdk destroy SportRankPredictionGameBackend-dev --force",
+    "destroy:dev": "cdk destroy SportRankPredictionGame-dev --force"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.181.1",
+    "constructs": "10.4.2",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.8",
+    "@types/react-dom": "19.0.3",
+    "@vitejs/plugin-react": "4.4.1",
+    "@types/node": "^22.13.4",
+    "aws-cdk": "2.1010.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "6.1.0"
+  }
+}
