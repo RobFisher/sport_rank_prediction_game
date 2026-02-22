@@ -7,6 +7,7 @@ interface WorkspaceHeaderProps {
   googleStatus: string | null;
   backendStatus: string | null;
   canUploadCompetitors: boolean;
+  onOpenRules: () => void;
   onToggleGoogleConnection: () => void;
   onUploadCompetitors: () => void;
 }
@@ -20,6 +21,7 @@ export function WorkspaceHeader({
   googleStatus,
   backendStatus,
   canUploadCompetitors,
+  onOpenRules,
   onToggleGoogleConnection,
   onUploadCompetitors
 }: WorkspaceHeaderProps) {
@@ -35,6 +37,7 @@ export function WorkspaceHeader({
       </div>
       <div className="workspace-actions">
         <div className="workspace-primary-actions">
+          <button onClick={onOpenRules}>Rules</button>
           {canUploadCompetitors && (
             <button onClick={onUploadCompetitors} title="Upload competitor list JSON">
               Admin: Upload Competitors

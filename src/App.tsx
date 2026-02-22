@@ -35,6 +35,7 @@ import { GoogleDisplayNameDialog } from "./components/GoogleDisplayNameDialog.js
 import { CreateGameDialog } from "./components/CreateGameDialog.js";
 import { GamesPane } from "./components/GamesPane.js";
 import { GamePredictionsPane } from "./components/GamePredictionsPane.js";
+import { RulesDialog } from "./components/RulesDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
 const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
@@ -228,6 +229,7 @@ export function App() {
   const [newPredictionGameId, setNewPredictionGameId] = useState<string | null>(null);
   const [createGameDialogOpen, setCreateGameDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
+  const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Loading data from backend...");
   const [googleDisplayNameByUserId, setGoogleDisplayNameByUserId] = useState<
     Record<string, string>
@@ -957,6 +959,7 @@ export function App() {
         googleStatus={googleStatus}
         backendStatus={backendStatus}
         canUploadCompetitors={isAdmin}
+        onOpenRules={() => setRulesDialogOpen(true)}
         onToggleGoogleConnection={toggleGoogleConnection}
         onUploadCompetitors={handleUploadCompetitors}
       />
@@ -1084,6 +1087,7 @@ export function App() {
         }}
         onClose={() => setSaveDialogPredictionId(null)}
       />
+      <RulesDialog open={rulesDialogOpen} onClose={() => setRulesDialogOpen(false)} />
       <GoogleDisplayNameDialog
         isOpen={googleDisplayNameDialogOpen}
         email={googleUser?.email ?? ""}
