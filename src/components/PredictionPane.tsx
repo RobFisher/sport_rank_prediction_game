@@ -1,3 +1,4 @@
+import { Fragment, useState } from "react";
 import type { CompetitorList, Game, Prediction } from "../predictionModel.js";
 
 interface PredictionPaneProps {
@@ -21,6 +22,8 @@ export function PredictionPane({
   onSavePrediction,
   onRemovePane
 }: PredictionPaneProps) {
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const competitorById = new Map(
     competitorList.competitors.map((competitor) => [competitor.id, competitor])
   );
@@ -56,45 +59,142 @@ export function PredictionPane({
         </button>
       </header>
 
-      <ol className="competitor-list">
-        {prediction.competitorIds.map((competitorId, index) => {
-          const competitor = competitorById.get(competitorId);
-          if (!competitor) {
-            return null;
-          }
+      <div className="pane-body">
+        <ol className="competitor-list">
+          {prediction.competitorIds.map((competitorId, index) => {
+            const competitor = competitorById.get(competitorId);
+            if (!competitor) {
+              return null;
+            }
 
-          return (
-            <li className="competitor-row" key={`${prediction.id}-${competitorId}`}>
-              <span className="competitor-rank">{index + 1}</span>
-              <div className="competitor-copy">
-                <strong>{competitor.name}</strong>
-                <span>
-                  {competitor.subtitle ?? "Independent"}{" "}
-                  {competitor.number ? `#${competitor.number}` : ""}
-                </span>
-              </div>
-              <div className="competitor-actions">
-                <button
-                  onClick={() => onMoveCompetitor(prediction.id, index, index - 1)}
-                  disabled={index === 0}
-                  aria-label={`Move ${competitor.name} up`}
-                  title="Move up"
+            return (
+              <Fragment key={`${prediction.id}-${competitorId}`}>
+                <li
+                  className={`competitor-drop-slot ${
+                    dragFromIndex !== null && dragOverIndex === index
+                      ? "competitor-drop-slot-active"
+                      : ""
+                  }`}
+                  onDragOver={(event) => {
+                    if (dragFromIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    setDragOverIndex(index);
+                  }}
+                  onDrop={(event) => {
+                    if (dragFromIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const fromIndex =
+                      dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
+                    if (!Number.isNaN(fromIndex) && fromIndex !== index) {
+                      onMoveCompetitor(prediction.id, fromIndex, index);
+                    }
+                    setDragFromIndex(null);
+                    setDragOverIndex(null);
+                  }}
+                />
+                <li
+                  className="competitor-row"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", String(index));
+                    setDragFromIndex(index);
+                  }}
+                  onDragOver={(event) => {
+                    if (dragFromIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const nextIndex =
+                      event.clientY < rect.top + rect.height / 2 ? index : index + 1;
+                    setDragOverIndex(nextIndex);
+                  }}
+                  onDrop={(event) => {
+                    if (dragFromIndex === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    const fromIndex =
+                      dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
+                    const toIndex = dragOverIndex ?? index;
+                    if (!Number.isNaN(fromIndex) && fromIndex !== toIndex) {
+                      onMoveCompetitor(prediction.id, fromIndex, toIndex);
+                    }
+                    setDragFromIndex(null);
+                    setDragOverIndex(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragFromIndex(null);
+                    setDragOverIndex(null);
+                  }}
                 >
-                  ↑
-                </button>
-                <button
-                  onClick={() => onMoveCompetitor(prediction.id, index, index + 1)}
-                  disabled={index === prediction.competitorIds.length - 1}
-                  aria-label={`Move ${competitor.name} down`}
-                  title="Move down"
-                >
-                  ↓
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                  <span className="competitor-rank">{index + 1}</span>
+                  <div className="competitor-copy">
+                    <strong>{competitor.name}</strong>
+                    <span>
+                      {competitor.subtitle ?? "Independent"}{" "}
+                      {competitor.number ? `#${competitor.number}` : ""}
+                    </span>
+                  </div>
+                  <div className="competitor-actions">
+                    <button
+                      onClick={() => onMoveCompetitor(prediction.id, index, index - 1)}
+                      disabled={index === 0}
+                      aria-label={`Move ${competitor.name} up`}
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => onMoveCompetitor(prediction.id, index, index + 1)}
+                      disabled={index === prediction.competitorIds.length - 1}
+                      aria-label={`Move ${competitor.name} down`}
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </li>
+              </Fragment>
+            );
+          })}
+          <li
+            className={`competitor-drop-slot ${
+              dragFromIndex !== null && dragOverIndex === prediction.competitorIds.length
+                ? "competitor-drop-slot-active"
+                : ""
+            }`}
+            onDragOver={(event) => {
+              if (dragFromIndex === null) {
+                return;
+              }
+              event.preventDefault();
+              setDragOverIndex(prediction.competitorIds.length);
+            }}
+            onDrop={(event) => {
+              if (dragFromIndex === null) {
+                return;
+              }
+              event.preventDefault();
+              const fromIndex =
+                dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
+              if (
+                !Number.isNaN(fromIndex) &&
+                fromIndex !== prediction.competitorIds.length
+              ) {
+                onMoveCompetitor(prediction.id, fromIndex, prediction.competitorIds.length);
+              }
+              setDragFromIndex(null);
+              setDragOverIndex(null);
+            }}
+          />
+        </ol>
+      </div>
     </article>
   );
 }
