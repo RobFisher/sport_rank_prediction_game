@@ -17,6 +17,7 @@ export interface Game {
   name: string;
   competitorListId: string;
   closesAt: string;
+  results?: string[] | null;
 }
 
 export type PredictionType = "competition" | "fun";

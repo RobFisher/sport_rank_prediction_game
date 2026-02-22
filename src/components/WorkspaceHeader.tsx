@@ -8,10 +8,12 @@ interface WorkspaceHeaderProps {
   googleStatus: string | null;
   backendStatus: string | null;
   canUploadCompetitors: boolean;
+  canCreateGame: boolean;
   onNewPrediction: () => void;
   onLoadSample: () => void;
   onToggleGoogleConnection: () => void;
   onUploadCompetitors: () => void;
+  onCreateGame: () => void;
 }
 
 export function WorkspaceHeader({
@@ -24,10 +26,12 @@ export function WorkspaceHeader({
   googleStatus,
   backendStatus,
   canUploadCompetitors,
+  canCreateGame,
   onNewPrediction,
   onLoadSample,
   onToggleGoogleConnection,
-  onUploadCompetitors
+  onUploadCompetitors,
+  onCreateGame
 }: WorkspaceHeaderProps) {
   return (
     <header className="workspace-header">
@@ -45,17 +49,16 @@ export function WorkspaceHeader({
             New Prediction
           </button>
           <button onClick={onLoadSample}>Reload Sample Data</button>
-          <button
-            onClick={onUploadCompetitors}
-            disabled={!canUploadCompetitors}
-            title={
-              canUploadCompetitors
-                ? "Upload competitor list JSON"
-                : "Login as an administrator to upload competitor lists"
-            }
-          >
-            Admin: Upload Competitors
-          </button>
+          {canUploadCompetitors && (
+            <button onClick={onUploadCompetitors} title="Upload competitor list JSON">
+              Admin: Upload Competitors
+            </button>
+          )}
+          {canCreateGame && (
+            <button onClick={onCreateGame} title="Create a new game">
+              Admin: Create Game
+            </button>
+          )}
           <button
             className={googleConnected ? "google-connected" : "google-disconnected"}
             onClick={onToggleGoogleConnection}

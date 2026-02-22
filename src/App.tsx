@@ -19,6 +19,7 @@ import { PredictionPane } from "./components/PredictionPane.js";
 import { NewPredictionDialog } from "./components/NewPredictionDialog.js";
 import { SavePredictionDialog } from "./components/SavePredictionDialog.js";
 import { GoogleDisplayNameDialog } from "./components/GoogleDisplayNameDialog.js";
+import { CreateGameDialog } from "./components/CreateGameDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
 const initialPanePredictionIds = seedData.predictions.map((prediction) => prediction.id);
@@ -27,6 +28,18 @@ const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
 function createPredictionId(counterRef: { current: number }): string {
   counterRef.current += 1;
   return `prediction-${counterRef.current}`;
+}
+
+function createGameId(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const suffix = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0");
+  return slug ? `${slug}-${suffix}` : `game-${Date.now()}`;
 }
 
 function normalizeDisplayName(value: string): string {
@@ -128,12 +141,13 @@ function parseDisplayNameMap(raw: string | null): Record<string, string> {
 
 export function App() {
   const [competitorLists, setCompetitorLists] = useState(seedData.competitorLists);
-  const [games] = useState(seedData.games);
+  const [games, setGames] = useState(seedData.games);
   const [predictions, setPredictions] = useState<Prediction[]>(seedData.predictions);
   const [panePredictionIds, setPanePredictionIds] = useState<string[]>(
     initialPanePredictionIds.length > 0 ? initialPanePredictionIds : []
   );
   const [newPredictionDialogOpen, setNewPredictionDialogOpen] = useState(false);
+  const [createGameDialogOpen, setCreateGameDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState(
     "Using local placeholder data. Login works when the local backend is running."
@@ -365,6 +379,19 @@ export function App() {
     }
   };
 
+  const handleCreateGame = (name: string, competitorListId: string, closesAt: string) => {
+    const game = {
+      id: createGameId(name),
+      name,
+      competitorListId,
+      closesAt,
+      results: null
+    };
+    setGames((current) => [...current, game]);
+    setCreateGameDialogOpen(false);
+    setStatusMessage(`Created game "${name}".`);
+  };
+
   const handleMoveCompetitor = (predictionId: string, fromIndex: number, toIndex: number) => {
     setPredictions((current) =>
       current.map((prediction) =>
@@ -445,10 +472,12 @@ export function App() {
         googleStatus={googleStatus}
         backendStatus={backendStatus}
         canUploadCompetitors={isAdmin}
+        canCreateGame={isAdmin}
         onNewPrediction={() => setNewPredictionDialogOpen(true)}
         onLoadSample={handleReloadSample}
         onToggleGoogleConnection={toggleGoogleConnection}
         onUploadCompetitors={handleUploadCompetitors}
+        onCreateGame={() => setCreateGameDialogOpen(true)}
       />
       <section className="pane-grid">
         {panePredictions.map((prediction, paneIndex) => {
@@ -482,6 +511,12 @@ export function App() {
         games={games}
         onCreate={handleCreatePrediction}
         onClose={() => setNewPredictionDialogOpen(false)}
+      />
+      <CreateGameDialog
+        open={createGameDialogOpen}
+        competitorLists={competitorLists}
+        onCreate={handleCreateGame}
+        onClose={() => setCreateGameDialogOpen(false)}
       />
       <SavePredictionDialog
         open={saveDialogPredictionId !== null}
