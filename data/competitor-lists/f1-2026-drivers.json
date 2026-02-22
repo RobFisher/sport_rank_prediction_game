@@ -1,0 +1,160 @@
+{
+  "id": "f1-2026-drivers",
+  "name": "F1 2026 Drivers",
+  "competitors": [
+    {
+      "id": "lando-norris",
+      "name": "Lando Norris",
+      "subtitle": "McLaren",
+      "color": "#FF8000",
+      "number": 1
+    },
+    {
+      "id": "oscar-piastri",
+      "name": "Oscar Piastri",
+      "subtitle": "McLaren",
+      "color": "#FF8000",
+      "number": 81
+    },
+    {
+      "id": "george-russell",
+      "name": "George Russell",
+      "subtitle": "Mercedes",
+      "color": "#27F4D2",
+      "number": 63
+    },
+    {
+      "id": "kimi-antonelli",
+      "name": "Kimi Antonelli",
+      "subtitle": "Mercedes",
+      "color": "#27F4D2",
+      "number": 12
+    },
+    {
+      "id": "max-verstappen",
+      "name": "Max Verstappen",
+      "subtitle": "Red Bull Racing",
+      "color": "#3671C6",
+      "number": 3
+    },
+    {
+      "id": "isack-hadjar",
+      "name": "Isack Hadjar",
+      "subtitle": "Red Bull Racing",
+      "color": "#3671C6",
+      "number": 6
+    },
+    {
+      "id": "charles-leclerc",
+      "name": "Charles Leclerc",
+      "subtitle": "Ferrari",
+      "color": "#E8002D",
+      "number": 16
+    },
+    {
+      "id": "lewis-hamilton",
+      "name": "Lewis Hamilton",
+      "subtitle": "Ferrari",
+      "color": "#E8002D",
+      "number": 44
+    },
+    {
+      "id": "alex-albon",
+      "name": "Alex Albon",
+      "subtitle": "Williams",
+      "color": "#64C4FF",
+      "number": 23
+    },
+    {
+      "id": "carlos-sainz",
+      "name": "Carlos Sainz",
+      "subtitle": "Williams",
+      "color": "#64C4FF",
+      "number": 55
+    },
+    {
+      "id": "liam-lawson",
+      "name": "Liam Lawson",
+      "subtitle": "Racing Bulls",
+      "color": "#6692FF",
+      "number": 30
+    },
+    {
+      "id": "arvid-lindblad",
+      "name": "Arvid Lindblad",
+      "subtitle": "Racing Bulls",
+      "color": "#6692FF",
+      "number": 41
+    },
+    {
+      "id": "fernando-alonso",
+      "name": "Fernando Alonso",
+      "subtitle": "Aston Martin",
+      "color": "#229971",
+      "number": 14
+    },
+    {
+      "id": "lance-stroll",
+      "name": "Lance Stroll",
+      "subtitle": "Aston Martin",
+      "color": "#229971",
+      "number": 18
+    },
+    {
+      "id": "esteban-ocon",
+      "name": "Esteban Ocon",
+      "subtitle": "Haas",
+      "color": "#B6BABD",
+      "number": 31
+    },
+    {
+      "id": "oliver-bearman",
+      "name": "Oliver Bearman",
+      "subtitle": "Haas",
+      "color": "#B6BABD",
+      "number": 87
+    },
+    {
+      "id": "nico-hulkenberg",
+      "name": "Nico Hulkenberg",
+      "subtitle": "Audi",
+      "color": "#BF4545",
+      "number": 27
+    },
+    {
+      "id": "gabriel-bortoleto",
+      "name": "Gabriel Bortoleto",
+      "subtitle": "Audi",
+      "color": "#BF4545",
+      "number": 5
+    },
+    {
+      "id": "pierre-gasly",
+      "name": "Pierre Gasly",
+      "subtitle": "Alpine",
+      "color": "#0090FF",
+      "number": 10
+    },
+    {
+      "id": "franco-colapinto",
+      "name": "Franco Colapinto",
+      "subtitle": "Alpine",
+      "color": "#0090FF",
+      "number": 43
+    },
+    {
+      "id": "sergio-perez",
+      "name": "Sergio Perez",
+      "subtitle": "Cadillac",
+      "color": "#999999",
+      "number": 11
+    },
+    {
+      "id": "valtteri-bottas",
+      "name": "Valtteri Bottas",
+      "subtitle": "Cadillac",
+      "color": "#999999",
+      "number": 77
+    }
+  ]
+}
