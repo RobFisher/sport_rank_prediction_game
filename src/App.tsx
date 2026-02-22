@@ -53,7 +53,7 @@ function createPaneId(prefix: string): string {
 }
 
 function normalizePredictionName(value: string): string {
-  return value.trim().toLowerCase();
+  return String(value ?? "").trim().toLowerCase();
 }
 
 function createGameId(name: string): string {
@@ -676,101 +676,135 @@ export function App() {
     }
   };
 
-  const handleSavePrediction = async (predictionId: string, name: string) => {
-    const prediction = predictionsById.get(predictionId);
-    if (!prediction || !backendSessionUser) {
-      return;
-    }
-    const trimmedName = name.trim();
-    const ownsPrediction = isOwnPrediction(prediction);
-    const game = gamesById.get(prediction.gameId);
-    if (!game) {
-      setStatusMessage("Prediction game not found.");
-      return;
-    }
-    const closesAtMs = Date.parse(game.closesAt);
-    if (
-      ownsPrediction &&
-      prediction.type === "competition" &&
-      Number.isFinite(closesAtMs) &&
-      closesAtMs <= Date.now()
-    ) {
-      setSaveDialogPredictionId(null);
-      setStatusMessage("Competition predictions are closed for this game.");
-      return;
-    }
-
-    const desiredType = ownsPrediction ? prediction.type : "fun";
-    if (desiredType === "fun") {
-      if (!trimmedName) {
-        setStatusMessage("Fun predictions need a name.");
+  const handleSavePrediction = async (
+    predictionId: string,
+    desiredType: PredictionType,
+    name: string
+  ) => {
+    try {
+      const prediction = predictionsById.get(predictionId);
+      if (!prediction || !backendSessionUser) {
         return;
       }
-      const normalized = normalizePredictionName(trimmedName);
-      const sameName = predictions.find(
-        (entry) =>
-          entry.gameId === prediction.gameId &&
-          entry.type === "fun" &&
-          normalizePredictionName(entry.name) === normalized
-      );
-      if (sameName && sameName.id !== prediction.id) {
-        if (sameName.ownerUserId && sameName.ownerUserId !== backendSessionUser.userId) {
-          setStatusMessage(
-            `Another user already has a fun prediction named "${trimmedName}".`
-          );
-          return;
-        }
-        const confirmOverwrite = window.confirm(
-          `You already have a fun prediction named "${trimmedName}". Overwrite it?`
-        );
-        if (!confirmOverwrite) {
-          return;
-        }
-        try {
-          const updated = await updatePrediction(sameName.id, {
-            name: trimmedName,
-            competitorIds: prediction.competitorIds
-          });
-          setPredictions((current) => mergePredictions(current, [toUiPrediction(updated)]));
-          setSaveDialogPredictionId(null);
-          setStatusMessage(`Overwrote "${trimmedName}".`);
-          return;
-        } catch (error) {
-          setStatusMessage(
-            error instanceof Error ? error.message : "Failed to overwrite prediction."
-          );
+      const trimmedName = name.trim();
+      const ownsPrediction = isOwnPrediction(prediction);
+      const game = gamesById.get(prediction.gameId);
+      if (!game) {
+        setStatusMessage("Prediction game not found.");
+        return;
+      }
+      const closesAtMs = Date.parse(game.closesAt);
+      if (
+        ownsPrediction &&
+        prediction.type === "competition" &&
+        Number.isFinite(closesAtMs) &&
+        closesAtMs <= Date.now()
+      ) {
+        setSaveDialogPredictionId(null);
+        setStatusMessage("Competition predictions are closed for this game.");
+        return;
+      }
+
+    if (desiredType === "competition") {
+      if (
+        hasCompetitionForGame(prediction.gameId) &&
+        !(ownsPrediction && prediction.type === "competition")
+      ) {
+        setStatusMessage("You already have a competition prediction for this game.");
+        return;
+      }
+      if (Number.isFinite(closesAtMs) && closesAtMs <= Date.now()) {
+        setStatusMessage("Competition predictions are closed for this game.");
           return;
         }
       }
-    }
+      if (desiredType === "fun") {
+        if (!trimmedName) {
+          setStatusMessage("Fun predictions need a name.");
+          return;
+        }
+        const normalized = normalizePredictionName(trimmedName);
+        const sameName = predictions.find(
+          (entry) =>
+            entry.gameId === prediction.gameId &&
+            entry.type === "fun" &&
+            normalizePredictionName(entry.name) === normalized
+        );
+        if (sameName && sameName.id !== prediction.id) {
+          if (sameName.ownerUserId && sameName.ownerUserId !== backendSessionUser.userId) {
+            setStatusMessage(
+              `Another user already has a fun prediction named "${trimmedName}".`
+            );
+            return;
+          }
+          const confirmOverwrite = window.confirm(
+            `You already have a fun prediction named "${trimmedName}". Overwrite it?`
+          );
+          if (!confirmOverwrite) {
+            return;
+          }
+          try {
+            const updated = await updatePrediction(sameName.id, {
+              name: trimmedName,
+              competitorIds: prediction.competitorIds
+            });
+            setPredictions((current) =>
+              mergePredictions(current, [toUiPrediction(updated)])
+            );
+            setSaveDialogPredictionId(null);
+            setStatusMessage(`Overwrote "${trimmedName}".`);
+            return;
+          } catch (error) {
+            setStatusMessage(
+              error instanceof Error ? error.message : "Failed to overwrite prediction."
+            );
+            return;
+          }
+        }
+      }
 
-    try {
-      if (ownsPrediction) {
+      try {
+      if (ownsPrediction && desiredType === prediction.type) {
         const updated = await updatePrediction(predictionId, {
           name: prediction.type === "competition" ? "" : trimmedName,
           competitorIds: prediction.competitorIds
         });
-        setPredictions((current) => mergePredictions(current, [toUiPrediction(updated)]));
-        setSaveDialogPredictionId(null);
-        setStatusMessage("Prediction saved.");
-        return;
-      }
+          setPredictions((current) =>
+            mergePredictions(current, [toUiPrediction(updated)])
+          );
+          setSaveDialogPredictionId(null);
+          setStatusMessage("Prediction saved.");
+          return;
+        }
 
-      const created = await createPrediction({
-        id: createPredictionId(),
-        gameId: prediction.gameId,
-        type: "fun",
-        name: trimmedName,
-        competitorIds: prediction.competitorIds
-      });
-      const uiPrediction = toUiPrediction(created);
-      setPredictions((current) => mergePredictions(current, [uiPrediction]));
-      setPanes((current) => [
-        ...current,
-        { id: createPaneId("prediction"), type: "prediction", predictionId: uiPrediction.id }
-      ]);
-      setSaveDialogPredictionId(null);
-      setStatusMessage(`Saved a new fun prediction: "${trimmedName}".`);
+        const created = await createPrediction({
+          id: createPredictionId(),
+          gameId: prediction.gameId,
+          type: desiredType,
+          name: desiredType === "competition" ? "" : trimmedName,
+          competitorIds: prediction.competitorIds
+        });
+        const uiPrediction = toUiPrediction(created);
+        setPredictions((current) => mergePredictions(current, [uiPrediction]));
+        setPanes((current) => [
+          ...current,
+          {
+            id: createPaneId("prediction"),
+            type: "prediction",
+            predictionId: uiPrediction.id
+          }
+        ]);
+        setSaveDialogPredictionId(null);
+        setStatusMessage(
+          desiredType === "competition"
+            ? "Saved a new competition prediction."
+            : `Saved a new fun prediction: "${trimmedName}".`
+        );
+      } catch (error) {
+        setStatusMessage(
+          error instanceof Error ? error.message : "Failed to save prediction."
+        );
+      }
     } catch (error) {
       setStatusMessage(
         error instanceof Error ? error.message : "Failed to save prediction."
@@ -820,10 +854,6 @@ export function App() {
     setPanes((current) => current.filter((_, index) => index !== paneIndex));
   };
 
-  const activeSavePrediction = saveDialogPredictionId
-    ? predictionsById.get(saveDialogPredictionId) ?? null
-    : null;
-
   const predictionCountsByGameId = useMemo(() => {
     const counts = new Map<string, number>();
     predictions.forEach((prediction) => {
@@ -855,6 +885,20 @@ export function App() {
 
   const isOwnPrediction = (prediction: Prediction) =>
     Boolean(backendSessionUser && prediction.ownerUserId === backendSessionUser.userId);
+
+  const activeSavePrediction = saveDialogPredictionId
+    ? predictionsById.get(saveDialogPredictionId) ?? null
+    : null;
+  const activeSaveGame = activeSavePrediction
+    ? gamesById.get(activeSavePrediction.gameId) ?? null
+    : null;
+  const activeSaveCompetitionAllowed = Boolean(
+    activeSavePrediction &&
+      !hasCompetitionForGame(activeSavePrediction.gameId) &&
+      activeSaveGame &&
+      Number.isFinite(Date.parse(activeSaveGame.closesAt)) &&
+      Date.parse(activeSaveGame.closesAt) > Date.now()
+  );
 
   return (
     <div className="workspace">
@@ -982,11 +1026,13 @@ export function App() {
             ? "Save"
             : "Save As"
         }
-        onSave={(name) => {
+        allowCompetition={activeSaveCompetitionAllowed}
+        allowTypeChange={activeSaveCompetitionAllowed}
+        onSave={(type, name) => {
           if (!saveDialogPredictionId) {
             return;
           }
-          void handleSavePrediction(saveDialogPredictionId, name);
+          void handleSavePrediction(saveDialogPredictionId, type, name);
         }}
         onClose={() => setSaveDialogPredictionId(null)}
       />
