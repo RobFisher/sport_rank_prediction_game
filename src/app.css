@@ -297,7 +297,7 @@ body {
 
 .competitor-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 22px 34px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   border: 1px solid #d5deea;
@@ -325,6 +325,13 @@ body {
 
 .competitor-drop-slot-active {
   background: #99b7ec;
+}
+
+.competitor-color {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid #c8d2e2;
 }
 
 .competitor-rank {

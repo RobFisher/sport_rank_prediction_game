@@ -141,6 +141,11 @@ export function PredictionPane({
                     setDragOverIndex(null);
                   }}
                 >
+                  <span
+                    className="competitor-color"
+                    style={{ backgroundColor: competitor.color ?? "#e7edf7" }}
+                    aria-hidden="true"
+                  />
                   <span className="competitor-rank">{index + 1}</span>
                   <div className="competitor-copy">
                     <strong>{competitor.name}</strong>
