@@ -5,6 +5,7 @@ interface NewPredictionDialogProps {
   open: boolean;
   games: Game[];
   initialGameId?: string | null;
+  hasCompetitionForGame: (gameId: string) => boolean;
   onCreate: (gameId: string, type: PredictionType) => void;
   onClose: () => void;
 }
@@ -13,6 +14,7 @@ export function NewPredictionDialog({
   open,
   games,
   initialGameId,
+  hasCompetitionForGame,
   onCreate,
   onClose
 }: NewPredictionDialogProps) {
@@ -31,11 +33,21 @@ export function NewPredictionDialog({
     }
   }, [open, gameOptions, initialGameId]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (type === "competition" && hasCompetitionForGame(gameId)) {
+      setType("fun");
+    }
+  }, [gameId, hasCompetitionForGame, open, type]);
+
   if (!open) {
     return null;
   }
 
-  const canCreate = gameId.length > 0;
+  const hasCompetition = gameId.length > 0 && hasCompetitionForGame(gameId);
+  const canCreate = gameId.length > 0 && (type !== "competition" || !hasCompetition);
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -63,7 +75,9 @@ export function NewPredictionDialog({
         <label>
           Prediction type
           <select value={type} onChange={(event) => setType(event.target.value as PredictionType)}>
-            <option value="competition">Competition</option>
+            <option value="competition" disabled={hasCompetition}>
+              {hasCompetition ? "Competition (already entered)" : "Competition"}
+            </option>
             <option value="fun">Fun</option>
           </select>
         </label>

@@ -677,15 +677,19 @@ export function App() {
     if (!prediction) {
       return;
     }
-    if (prediction.type === "competition") {
-      setSaveDialogPredictionId(null);
-      setStatusMessage("Competition predictions cannot be edited after creation.");
-      return;
-    }
     const trimmedName = name.trim();
+    if (prediction.type === "competition") {
+      const game = gamesById.get(prediction.gameId);
+      const closesAtMs = game ? Date.parse(game.closesAt) : Number.NaN;
+      if (Number.isFinite(closesAtMs) && closesAtMs <= Date.now()) {
+        setSaveDialogPredictionId(null);
+        setStatusMessage("Competition predictions are closed for this game.");
+        return;
+      }
+    }
     try {
       const updated = await updatePrediction(predictionId, {
-        name: trimmedName,
+        name: prediction.type === "competition" ? "" : trimmedName,
         competitorIds: prediction.competitorIds
       });
       setPredictions((current) => mergePredictions(current, [toUiPrediction(updated)]));
@@ -752,6 +756,27 @@ export function App() {
     return counts;
   }, [predictions]);
 
+  const competitionEntryByGameId = useMemo(() => {
+    const entries = new Map<string, boolean>();
+    predictions.forEach((prediction) => {
+      if (prediction.type !== "competition") {
+        return;
+      }
+      if (backendSessionUser && prediction.ownerUserId !== backendSessionUser.userId) {
+        return;
+      }
+      entries.set(prediction.gameId, true);
+    });
+    return entries;
+  }, [backendSessionUser, predictions]);
+
+  const hasCompetitionForGame = (gameId: string) => {
+    if (!backendSessionUser) {
+      return false;
+    }
+    return competitionEntryByGameId.get(gameId) ?? false;
+  };
+
   return (
     <div className="workspace">
       <WorkspaceHeader
@@ -815,6 +840,11 @@ export function App() {
             if (!game) {
               return null;
             }
+            const closesAtMs = Date.parse(game.closesAt);
+            const isCompetitionClosed =
+              prediction.type === "competition" &&
+              Number.isFinite(closesAtMs) &&
+              closesAtMs <= Date.now();
             const competitorList = competitorListsById.get(game.competitorListId);
             if (!competitorList) {
               return null;
@@ -831,10 +861,8 @@ export function App() {
                 onMoveCompetitor={handleMoveCompetitor}
                 onSavePrediction={(id) => setSaveDialogPredictionId(id)}
                 onRemovePane={handleRemovePane}
-                saveDisabled={!googleConnected || prediction.type === "competition"}
-                saveLabel={
-                  prediction.type === "competition" ? "Locked" : "Save"
-                }
+                saveDisabled={!googleConnected || isCompetitionClosed}
+                saveLabel={isCompetitionClosed ? "Locked" : "Save"}
               />
             );
           }
@@ -846,6 +874,7 @@ export function App() {
         open={newPredictionDialogOpen}
         games={games}
         initialGameId={newPredictionGameId}
+        hasCompetitionForGame={hasCompetitionForGame}
         onCreate={handleCreatePrediction}
         onClose={() => {
           setNewPredictionDialogOpen(false);
