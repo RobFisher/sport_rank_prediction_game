@@ -4,14 +4,21 @@ import {
   type CompetitorList,
   createPredictionFromGame,
   moveCompetitor,
-  seedData,
+  type Game,
   type Prediction,
   type PredictionType
 } from "./predictionModel.js";
 import {
+  createCompetitorList,
   createBackendGoogleSession,
+  createGame,
   getBackendMe,
+  listCompetitorLists,
+  listGames,
   logoutBackendSession,
+  updateCompetitorList,
+  type BackendCompetitorList,
+  type BackendGame,
   type BackendSessionUser
 } from "./backendApi.js";
 import { WorkspaceHeader } from "./components/WorkspaceHeader.js";
@@ -22,7 +29,6 @@ import { GoogleDisplayNameDialog } from "./components/GoogleDisplayNameDialog.js
 import { CreateGameDialog } from "./components/CreateGameDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
-const initialPanePredictionIds = seedData.predictions.map((prediction) => prediction.id);
 const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
 
 function createPredictionId(counterRef: { current: number }): string {
@@ -139,19 +145,39 @@ function parseDisplayNameMap(raw: string | null): Record<string, string> {
   }
 }
 
+function toUiCompetitorList(list: BackendCompetitorList): CompetitorList {
+  return {
+    id: list.competitorListId,
+    name: list.name,
+    competitors: list.competitors.map((competitor) => ({
+      id: competitor.id,
+      name: competitor.name,
+      subtitle: competitor.subtitle ?? undefined,
+      number: competitor.number ?? undefined,
+      color: competitor.color ?? undefined
+    }))
+  };
+}
+
+function toUiGame(game: BackendGame): Game {
+  return {
+    id: game.gameId,
+    name: game.name,
+    competitorListId: game.competitorListId,
+    closesAt: game.closesAt,
+    results: game.results ?? null
+  };
+}
+
 export function App() {
-  const [competitorLists, setCompetitorLists] = useState(seedData.competitorLists);
-  const [games, setGames] = useState(seedData.games);
-  const [predictions, setPredictions] = useState<Prediction[]>(seedData.predictions);
-  const [panePredictionIds, setPanePredictionIds] = useState<string[]>(
-    initialPanePredictionIds.length > 0 ? initialPanePredictionIds : []
-  );
+  const [competitorLists, setCompetitorLists] = useState<CompetitorList[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [panePredictionIds, setPanePredictionIds] = useState<string[]>([]);
   const [newPredictionDialogOpen, setNewPredictionDialogOpen] = useState(false);
   const [createGameDialogOpen, setCreateGameDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState(
-    "Using local placeholder data. Login works when the local backend is running."
-  );
+  const [statusMessage, setStatusMessage] = useState("Loading data from backend...");
   const [googleDisplayNameByUserId, setGoogleDisplayNameByUserId] = useState<
     Record<string, string>
   >(() => parseDisplayNameMap(localStorage.getItem(GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY)));
@@ -246,6 +272,47 @@ export function App() {
       const user = await refreshBackendSessionStatus();
       if (!cancelled && !user) {
         setBackendSessionUser(null);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshCompetitorLists = async () => {
+    const lists = await listCompetitorLists();
+    setCompetitorLists(lists.map(toUiCompetitorList));
+  };
+
+  const refreshGames = async () => {
+    const loaded = await listGames();
+    setGames(loaded.map(toUiGame));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [lists, loadedGames] = await Promise.all([
+          listCompetitorLists(),
+          listGames()
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setCompetitorLists(lists.map(toUiCompetitorList));
+        setGames(loadedGames.map(toUiGame));
+        setStatusMessage("Loaded competitor lists and games from the backend.");
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setStatusMessage(
+          error instanceof Error
+            ? `Failed to load backend data: ${error.message}`
+            : "Failed to load backend data."
+        );
       }
     };
     void run();
@@ -355,21 +422,46 @@ export function App() {
       const text = await file.text();
       const parsed = JSON.parse(text) as unknown;
       const importedLists = parseCompetitorListPayload(parsed);
-      setCompetitorLists((current) => {
-        const next = [...current];
-        importedLists.forEach((incoming) => {
-          const index = next.findIndex((existing) => existing.id === incoming.id);
-          if (index >= 0) {
-            next[index] = incoming;
-          } else {
-            next.push(incoming);
+      let createdCount = 0;
+      let updatedCount = 0;
+      for (const list of importedLists) {
+        const payload = {
+          id: list.id,
+          name: list.name,
+          competitors: list.competitors.map((competitor) => ({
+            id: competitor.id,
+            name: competitor.name,
+            subtitle: competitor.subtitle ?? null,
+            number: competitor.number ?? null,
+            color: competitor.color ?? null
+          }))
+        };
+        try {
+          await createCompetitorList(payload);
+          createdCount += 1;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          if (message.includes("(409)")) {
+            await updateCompetitorList(list.id, {
+              name: list.name,
+              competitors: payload.competitors
+            });
+            updatedCount += 1;
+            continue;
           }
-        });
-        return next;
-      });
-      setStatusMessage(
-        `Imported ${importedLists.length} competitor list${importedLists.length === 1 ? "" : "s"}.`
-      );
+          throw error;
+        }
+      }
+      await refreshCompetitorLists();
+      const segments = [];
+      if (createdCount > 0) {
+        segments.push(`created ${createdCount}`);
+      }
+      if (updatedCount > 0) {
+        segments.push(`updated ${updatedCount}`);
+      }
+      const summary = segments.length > 0 ? segments.join(", ") : "no changes";
+      setStatusMessage(`Competitor lists imported (${summary}).`);
     } catch (error) {
       setStatusMessage(
         error instanceof Error ? error.message : "Failed to import competitor list."
@@ -379,17 +471,27 @@ export function App() {
     }
   };
 
-  const handleCreateGame = (name: string, competitorListId: string, closesAt: string) => {
-    const game = {
-      id: createGameId(name),
-      name,
-      competitorListId,
-      closesAt,
-      results: null
-    };
-    setGames((current) => [...current, game]);
-    setCreateGameDialogOpen(false);
-    setStatusMessage(`Created game "${name}".`);
+  const handleCreateGame = async (
+    name: string,
+    competitorListId: string,
+    closesAt: string
+  ) => {
+    try {
+      const created = await createGame({
+        id: createGameId(name),
+        name,
+        competitorListId,
+        closesAt,
+        results: null
+      });
+      setGames((current) => [...current, toUiGame(created)]);
+      setCreateGameDialogOpen(false);
+      setStatusMessage(`Created game "${name}".`);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to create game."
+      );
+    }
   };
 
   const handleMoveCompetitor = (predictionId: string, fromIndex: number, toIndex: number) => {
@@ -449,13 +551,6 @@ export function App() {
     setPanePredictionIds((current) => current.filter((_, index) => index !== paneIndex));
   };
 
-  const handleReloadSample = () => {
-    setPredictions(seedData.predictions);
-    setPanePredictionIds(initialPanePredictionIds);
-    predictionIdCounter.current = seedData.predictions.length;
-    setStatusMessage("Sample predictions reloaded.");
-  };
-
   const activeSavePrediction = saveDialogPredictionId
     ? predictionsById.get(saveDialogPredictionId) ?? null
     : null;
@@ -465,7 +560,7 @@ export function App() {
       <WorkspaceHeader
         projectName="F1 2026 Predictions"
         statusMessage={statusMessage}
-        canAddPane={true}
+        canAddPane={games.length > 0}
         googleConnected={googleConnected}
         googleBusy={googleAuthLoading}
         googleAuthError={googleAuthError}
@@ -474,7 +569,6 @@ export function App() {
         canUploadCompetitors={isAdmin}
         canCreateGame={isAdmin}
         onNewPrediction={() => setNewPredictionDialogOpen(true)}
-        onLoadSample={handleReloadSample}
         onToggleGoogleConnection={toggleGoogleConnection}
         onUploadCompetitors={handleUploadCompetitors}
         onCreateGame={() => setCreateGameDialogOpen(true)}

@@ -64,6 +64,7 @@ export function CreateGameDialog({
           <select
             value={competitorListId}
             onChange={(event) => setCompetitorListId(event.target.value)}
+            disabled={competitorLists.length === 0}
           >
             {competitorLists.map((list) => (
               <option key={list.id} value={list.id}>
@@ -72,6 +73,11 @@ export function CreateGameDialog({
             ))}
           </select>
         </label>
+        {competitorLists.length === 0 && (
+          <p className="modal-support">
+            Upload a competitor list before creating a game.
+          </p>
+        )}
         <label>
           Competition deadline
           <input

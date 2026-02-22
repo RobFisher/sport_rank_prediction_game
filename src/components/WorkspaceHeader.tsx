@@ -10,7 +10,6 @@ interface WorkspaceHeaderProps {
   canUploadCompetitors: boolean;
   canCreateGame: boolean;
   onNewPrediction: () => void;
-  onLoadSample: () => void;
   onToggleGoogleConnection: () => void;
   onUploadCompetitors: () => void;
   onCreateGame: () => void;
@@ -28,7 +27,6 @@ export function WorkspaceHeader({
   canUploadCompetitors,
   canCreateGame,
   onNewPrediction,
-  onLoadSample,
   onToggleGoogleConnection,
   onUploadCompetitors,
   onCreateGame
@@ -48,7 +46,6 @@ export function WorkspaceHeader({
           <button onClick={onNewPrediction} disabled={!canAddPane}>
             New Prediction
           </button>
-          <button onClick={onLoadSample}>Reload Sample Data</button>
           {canUploadCompetitors && (
             <button onClick={onUploadCompetitors} title="Upload competitor list JSON">
               Admin: Upload Competitors

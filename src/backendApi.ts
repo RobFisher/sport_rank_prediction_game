@@ -15,6 +15,30 @@ export interface BackendProject {
   payload?: unknown;
 }
 
+export interface BackendCompetitor {
+  id: string;
+  name: string;
+  subtitle?: string | null;
+  number?: string | null;
+  color?: string | null;
+}
+
+export interface BackendCompetitorList {
+  competitorListId: string;
+  name: string;
+  competitors: BackendCompetitor[];
+  updatedAt: string;
+}
+
+export interface BackendGame {
+  gameId: string;
+  name: string;
+  competitorListId: string;
+  closesAt: string;
+  updatedAt: string;
+  results: string[] | null;
+}
+
 export interface BackendMeResponse {
   authenticated: boolean;
   user: BackendSessionUser | null;
@@ -173,4 +197,103 @@ export async function updateBackendProject(
   });
   const parsed = await parseResponse<{ project: BackendProject }>(response);
   return parsed.project;
+}
+
+export async function listCompetitorLists(): Promise<BackendCompetitorList[]> {
+  const response = await fetch(buildApiPath("/api/competitor-lists"), {
+    method: "GET",
+    credentials: "include"
+  });
+  const parsed = await parseResponse<{ lists: BackendCompetitorList[] }>(response);
+  return parsed.lists;
+}
+
+export async function createCompetitorList(
+  payload: {
+    id: string;
+    name: string;
+    competitors: BackendCompetitor[];
+  }
+): Promise<BackendCompetitorList> {
+  const response = await fetch(buildApiPath("/api/competitor-lists"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify(payload)
+  });
+  const parsed = await parseResponse<{ list: BackendCompetitorList }>(response);
+  return parsed.list;
+}
+
+export async function updateCompetitorList(
+  competitorListId: string,
+  payload: {
+    name: string;
+    competitors: BackendCompetitor[];
+  }
+): Promise<BackendCompetitorList> {
+  const response = await fetch(
+    buildApiPath(`/api/competitor-lists/${encodeURIComponent(competitorListId)}`),
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify(payload)
+    }
+  );
+  const parsed = await parseResponse<{ list: BackendCompetitorList }>(response);
+  return parsed.list;
+}
+
+export async function listGames(): Promise<BackendGame[]> {
+  const response = await fetch(buildApiPath("/api/games"), {
+    method: "GET",
+    credentials: "include"
+  });
+  const parsed = await parseResponse<{ games: BackendGame[] }>(response);
+  return parsed.games;
+}
+
+export async function createGame(payload: {
+  id: string;
+  name: string;
+  competitorListId: string;
+  closesAt: string;
+  results?: string[] | null;
+}): Promise<BackendGame> {
+  const response = await fetch(buildApiPath("/api/games"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify(payload)
+  });
+  const parsed = await parseResponse<{ game: BackendGame }>(response);
+  return parsed.game;
+}
+
+export async function updateGame(
+  gameId: string,
+  payload: {
+    name: string;
+    competitorListId: string;
+    closesAt: string;
+    results?: string[] | null;
+  }
+): Promise<BackendGame> {
+  const response = await fetch(buildApiPath(`/api/games/${encodeURIComponent(gameId)}`), {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify(payload)
+  });
+  const parsed = await parseResponse<{ game: BackendGame }>(response);
+  return parsed.game;
 }
