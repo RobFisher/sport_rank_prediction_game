@@ -37,17 +37,24 @@ export function NewPredictionDialog({
     if (!open) {
       return;
     }
-    if (type === "competition" && hasCompetitionForGame(gameId)) {
+    const selectedGame = gameOptions.find((entry) => entry.id === gameId);
+    const closesAtMs = selectedGame ? Date.parse(selectedGame.closesAt) : Number.NaN;
+    const closed = Number.isFinite(closesAtMs) && closesAtMs <= Date.now();
+    if (type === "competition" && (hasCompetitionForGame(gameId) || closed)) {
       setType("fun");
     }
-  }, [gameId, hasCompetitionForGame, open, type]);
+  }, [gameId, gameOptions, hasCompetitionForGame, open, type]);
 
   if (!open) {
     return null;
   }
 
+  const selectedGame = gameOptions.find((entry) => entry.id === gameId);
+  const closesAtMs = selectedGame ? Date.parse(selectedGame.closesAt) : Number.NaN;
+  const competitionClosed = Number.isFinite(closesAtMs) && closesAtMs <= Date.now();
   const hasCompetition = gameId.length > 0 && hasCompetitionForGame(gameId);
-  const canCreate = gameId.length > 0 && (type !== "competition" || !hasCompetition);
+  const competitionDisabled = hasCompetition || competitionClosed;
+  const canCreate = gameId.length > 0 && (type !== "competition" || !competitionDisabled);
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -75,8 +82,12 @@ export function NewPredictionDialog({
         <label>
           Prediction type
           <select value={type} onChange={(event) => setType(event.target.value as PredictionType)}>
-            <option value="competition" disabled={hasCompetition}>
-              {hasCompetition ? "Competition (already entered)" : "Competition"}
+            <option value="competition" disabled={competitionDisabled}>
+              {competitionClosed
+                ? "Competition (closed)"
+                : hasCompetition
+                  ? "Competition (already entered)"
+                  : "Competition"}
             </option>
             <option value="fun">Fun</option>
           </select>
