@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import "./app.css";
 import {
+  type CompetitorList,
   createPredictionFromGame,
   moveCompetitor,
   seedData,
@@ -32,6 +33,83 @@ function normalizeDisplayName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function normalizeColor(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const hex = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+    throw new Error(`Invalid color value "${value}". Use a 6-digit hex color.`);
+  }
+  return `#${hex.toUpperCase()}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseCompetitorListPayload(payload: unknown): CompetitorList[] {
+  const listCandidates: unknown[] = Array.isArray(payload)
+    ? payload
+    : isRecord(payload) && Array.isArray(payload.competitorLists)
+      ? payload.competitorLists
+      : [payload];
+
+  return listCandidates.map((candidate) => {
+    if (!isRecord(candidate)) {
+      throw new Error("Competitor list must be an object.");
+    }
+    const id = String(candidate.id ?? "").trim();
+    const name = String(candidate.name ?? "").trim();
+    if (!id) {
+      throw new Error("Competitor list is missing required field: id.");
+    }
+    if (!name) {
+      throw new Error("Competitor list is missing required field: name.");
+    }
+    const competitorsRaw = candidate.competitors;
+    if (!Array.isArray(competitorsRaw)) {
+      throw new Error(`Competitor list "${id}" must include a competitors array.`);
+    }
+    const competitors = competitorsRaw.map((competitor) => {
+      if (!isRecord(competitor)) {
+        throw new Error(`Competitor in "${id}" must be an object.`);
+      }
+      const competitorId = String(competitor.id ?? "").trim();
+      const competitorName = String(competitor.name ?? "").trim();
+      if (!competitorId) {
+        throw new Error(`Competitor list "${id}" has a competitor without id.`);
+      }
+      if (!competitorName) {
+        throw new Error(`Competitor list "${id}" has a competitor without name.`);
+      }
+      return {
+        id: competitorId,
+        name: competitorName,
+        subtitle: competitor.subtitle ? String(competitor.subtitle) : undefined,
+        number: competitor.number ? String(competitor.number) : undefined,
+        color: normalizeColor(competitor.color ? String(competitor.color) : undefined)
+      };
+    });
+    const seen = new Set<string>();
+    competitors.forEach((competitor) => {
+      if (seen.has(competitor.id)) {
+        throw new Error(`Competitor list "${id}" has duplicate id "${competitor.id}".`);
+      }
+      seen.add(competitor.id);
+    });
+    return {
+      id,
+      name,
+      competitors
+    };
+  });
+}
+
 function parseDisplayNameMap(raw: string | null): Record<string, string> {
   if (!raw) {
     return {};
@@ -49,7 +127,7 @@ function parseDisplayNameMap(raw: string | null): Record<string, string> {
 }
 
 export function App() {
-  const [competitorLists] = useState(seedData.competitorLists);
+  const [competitorLists, setCompetitorLists] = useState(seedData.competitorLists);
   const [games] = useState(seedData.games);
   const [predictions, setPredictions] = useState<Prediction[]>(seedData.predictions);
   const [panePredictionIds, setPanePredictionIds] = useState<string[]>(
@@ -69,6 +147,7 @@ export function App() {
   const [backendSessionUser, setBackendSessionUser] = useState<BackendSessionUser | null>(
     null
   );
+  const competitorListInputRef = useRef<HTMLInputElement | null>(null);
   const {
     googleToken,
     googleUser,
@@ -96,6 +175,7 @@ export function App() {
     .filter((prediction): prediction is Prediction => Boolean(prediction));
 
   const googleConnected = Boolean(backendSessionUser);
+  const isAdmin = Boolean(backendSessionUser?.isAdmin);
   const googleStatus = googleConnected
     ? `Google: ${backendSessionUser?.displayName ?? backendSessionUser?.email ?? "Connected"}`
     : null;
@@ -248,6 +328,43 @@ export function App() {
     })();
   }
 
+  const handleUploadCompetitors = () => {
+    competitorListInputRef.current?.click();
+  };
+
+  const handleCompetitorFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      const importedLists = parseCompetitorListPayload(parsed);
+      setCompetitorLists((current) => {
+        const next = [...current];
+        importedLists.forEach((incoming) => {
+          const index = next.findIndex((existing) => existing.id === incoming.id);
+          if (index >= 0) {
+            next[index] = incoming;
+          } else {
+            next.push(incoming);
+          }
+        });
+        return next;
+      });
+      setStatusMessage(
+        `Imported ${importedLists.length} competitor list${importedLists.length === 1 ? "" : "s"}.`
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to import competitor list."
+      );
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const handleMoveCompetitor = (predictionId: string, fromIndex: number, toIndex: number) => {
     setPredictions((current) =>
       current.map((prediction) =>
@@ -327,9 +444,11 @@ export function App() {
         googleAuthError={googleAuthError}
         googleStatus={googleStatus}
         backendStatus={backendStatus}
+        canUploadCompetitors={isAdmin}
         onNewPrediction={() => setNewPredictionDialogOpen(true)}
         onLoadSample={handleReloadSample}
         onToggleGoogleConnection={toggleGoogleConnection}
+        onUploadCompetitors={handleUploadCompetitors}
       />
       <section className="pane-grid">
         {panePredictions.map((prediction, paneIndex) => {
@@ -382,6 +501,13 @@ export function App() {
         onDisplayNameChange={setGoogleDisplayNameDraft}
         onSave={saveGoogleDisplayName}
         onCancel={cancelGoogleDisplayNameSetup}
+      />
+      <input
+        ref={competitorListInputRef}
+        type="file"
+        accept="application/json"
+        onChange={handleCompetitorFileChange}
+        style={{ display: "none" }}
       />
     </div>
   );

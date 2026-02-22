@@ -7,9 +7,11 @@ interface WorkspaceHeaderProps {
   googleAuthError: string | null;
   googleStatus: string | null;
   backendStatus: string | null;
+  canUploadCompetitors: boolean;
   onNewPrediction: () => void;
   onLoadSample: () => void;
   onToggleGoogleConnection: () => void;
+  onUploadCompetitors: () => void;
 }
 
 export function WorkspaceHeader({
@@ -21,9 +23,11 @@ export function WorkspaceHeader({
   googleAuthError,
   googleStatus,
   backendStatus,
+  canUploadCompetitors,
   onNewPrediction,
   onLoadSample,
-  onToggleGoogleConnection
+  onToggleGoogleConnection,
+  onUploadCompetitors
 }: WorkspaceHeaderProps) {
   return (
     <header className="workspace-header">
@@ -41,8 +45,16 @@ export function WorkspaceHeader({
             New Prediction
           </button>
           <button onClick={onLoadSample}>Reload Sample Data</button>
-          <button disabled title="Admin upload via JSON will be added later">
-            Admin: Upload JSON
+          <button
+            onClick={onUploadCompetitors}
+            disabled={!canUploadCompetitors}
+            title={
+              canUploadCompetitors
+                ? "Upload competitor list JSON"
+                : "Login as an administrator to upload competitor lists"
+            }
+          >
+            Admin: Upload Competitors
           </button>
           <button
             className={googleConnected ? "google-connected" : "google-disconnected"}

@@ -3,6 +3,7 @@ export interface Competitor {
   name: string;
   subtitle?: string;
   number?: string;
+  color?: string;
 }
 
 export interface CompetitorList {

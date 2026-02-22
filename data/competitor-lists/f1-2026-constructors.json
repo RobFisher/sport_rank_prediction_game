@@ -1,0 +1,66 @@
+{
+  "id": "f1-2026-constructors",
+  "name": "F1 2026 Constructors",
+  "competitors": [
+    {
+      "id": "red-bull-racing",
+      "name": "Red Bull Racing",
+      "subtitle": "Honda RBPT",
+      "color": "#3671C6"
+    },
+    {
+      "id": "ferrari",
+      "name": "Ferrari",
+      "subtitle": "Ferrari",
+      "color": "#E8002D"
+    },
+    {
+      "id": "mercedes",
+      "name": "Mercedes",
+      "subtitle": "Mercedes",
+      "color": "#27F4D2"
+    },
+    {
+      "id": "mclaren",
+      "name": "McLaren",
+      "subtitle": "Mercedes",
+      "color": "#FF8000"
+    },
+    {
+      "id": "aston-martin",
+      "name": "Aston Martin",
+      "subtitle": "Mercedes",
+      "color": "#229971"
+    },
+    {
+      "id": "alpine",
+      "name": "Alpine",
+      "subtitle": "Renault",
+      "color": "#0090FF"
+    },
+    {
+      "id": "williams",
+      "name": "Williams",
+      "subtitle": "Mercedes",
+      "color": "#64C4FF"
+    },
+    {
+      "id": "sauber",
+      "name": "Sauber",
+      "subtitle": "Ferrari",
+      "color": "#52E252"
+    },
+    {
+      "id": "rb",
+      "name": "RB",
+      "subtitle": "Honda RBPT",
+      "color": "#6692FF"
+    },
+    {
+      "id": "haas",
+      "name": "Haas",
+      "subtitle": "Ferrari",
+      "color": "#B6BABD"
+    }
+  ]
+}

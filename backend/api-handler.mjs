@@ -293,12 +293,16 @@ function createInMemoryStore() {
         googleIdentity.email;
       const existing = inMemoryUsersById.get(googleIdentity.sub);
       const isFirstUser = inMemoryUsersById.size === 0 && !existing;
+      const existingIsAdmin = existing?.isAdmin;
       const now = new Date().toISOString();
       const user = {
         userId: googleIdentity.sub,
         email: googleIdentity.email,
         displayName,
-        isAdmin: existing?.isAdmin ?? isFirstUser,
+        isAdmin:
+          typeof existingIsAdmin === "boolean"
+            ? existingIsAdmin
+            : isFirstUser || inMemoryUsersById.size === 1,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
       };
@@ -601,7 +605,10 @@ async function createDynamoStore() {
           }
         })
       );
-      let isAdmin = Boolean(existing.Item?.isAdmin);
+      let isAdmin = existing.Item?.isAdmin;
+      if (typeof isAdmin !== "boolean") {
+        isAdmin = false;
+      }
       if (!existing.Item) {
         const usersScan = await dynamodbClient.send(
           new ScanCommand({
@@ -610,6 +617,24 @@ async function createDynamoStore() {
             ExpressionAttributeValues: {
               ":prefix": USER_PK_PREFIX,
               ":sk": USER_SK_PROFILE
+            },
+            ProjectionExpression: "pk",
+            Limit: 1
+          })
+        );
+        if (!usersScan.Items || usersScan.Items.length === 0) {
+          isAdmin = true;
+        }
+      } else if (typeof existing.Item?.isAdmin !== "boolean") {
+        const usersScan = await dynamodbClient.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression:
+              "begins_with(pk, :prefix) AND sk = :sk AND pk <> :currentPk",
+            ExpressionAttributeValues: {
+              ":prefix": USER_PK_PREFIX,
+              ":sk": USER_SK_PROFILE,
+              ":currentPk": `${USER_PK_PREFIX}${googleIdentity.sub}`
             },
             ProjectionExpression: "pk",
             Limit: 1
