@@ -149,7 +149,7 @@ function toUiCompetitorList(list: BackendCompetitorList): CompetitorList {
   return {
     id: list.competitorListId,
     name: list.name,
-    competitors: list.competitors.map((competitor) => ({
+    competitors: (list.competitors ?? []).map((competitor) => ({
       id: competitor.id,
       name: competitor.name,
       subtitle: competitor.subtitle ?? undefined,

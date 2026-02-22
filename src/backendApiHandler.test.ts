@@ -107,6 +107,12 @@ test("listCompetitorListsFromDynamoScan follows LastEvaluatedKey across pages", 
         {
           competitorListId: "list-1",
           name: "F1 Drivers",
+          competitors: [
+            {
+              id: "driver-1",
+              name: "Driver One"
+            }
+          ],
           updatedAt: "2026-01-02T00:00:00.000Z"
         }
       ],
@@ -120,6 +126,7 @@ test("listCompetitorListsFromDynamoScan follows LastEvaluatedKey across pages", 
         {
           competitorListId: "list-2",
           name: "F1 Constructors",
+          competitors: [],
           updatedAt: "2026-01-03T00:00:00.000Z"
         }
       ]
@@ -164,11 +171,18 @@ test("listCompetitorListsFromDynamoScan follows LastEvaluatedKey across pages", 
     {
       competitorListId: "list-1",
       name: "F1 Drivers",
+      competitors: [
+        {
+          id: "driver-1",
+          name: "Driver One"
+        }
+      ],
       updatedAt: "2026-01-02T00:00:00.000Z"
     },
     {
       competitorListId: "list-2",
       name: "F1 Constructors",
+      competitors: [],
       updatedAt: "2026-01-03T00:00:00.000Z"
     }
   ]);

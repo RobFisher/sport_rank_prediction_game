@@ -363,6 +363,7 @@ export async function listCompetitorListsFromDynamoScan(
       lists.push({
         competitorListId: String(item.competitorListId),
         name: String(item.name),
+        competitors: Array.isArray(item.competitors) ? item.competitors : [],
         updatedAt: String(item.updatedAt)
       });
     }
@@ -486,7 +487,7 @@ function createInMemoryStore() {
 
     async listCompetitorLists() {
       return [...inMemoryCompetitorListsById.values()]
-        .map((list) => buildCompetitorListSummary(list))
+        .map((list) => buildCompetitorListDetails(list))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     },
 
