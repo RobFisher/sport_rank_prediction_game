@@ -12,6 +12,7 @@ import {
   createCompetitorList,
   createBackendGoogleSession,
   createGame,
+  deletePrediction,
   getBackendMe,
   getPrediction,
   listCompetitorLists,
@@ -854,6 +855,51 @@ export function App() {
     setPanes((current) => current.filter((_, index) => index !== paneIndex));
   };
 
+  const handleDeletePrediction = async (predictionId: string) => {
+    const prediction = predictionsById.get(predictionId);
+    if (!prediction || !backendSessionUser) {
+      return;
+    }
+    if (!isOwnPrediction(prediction)) {
+      return;
+    }
+    const game = gamesById.get(prediction.gameId);
+    if (!game) {
+      setStatusMessage("Prediction game not found.");
+      return;
+    }
+    if (prediction.type === "competition") {
+      const closesAtMs = Date.parse(game.closesAt);
+      if (Number.isFinite(closesAtMs) && closesAtMs <= Date.now()) {
+        setStatusMessage("Competition predictions are closed for this game.");
+        return;
+      }
+    }
+    const confirmed = window.confirm(
+      `Delete ${prediction.type === "competition" ? "competition" : "fun"} prediction?`
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await deletePrediction(predictionId);
+      setPredictions((current) =>
+        current.filter((entry) => entry.id !== predictionId)
+      );
+      setPanes((current) =>
+        current.filter(
+          (pane) =>
+            !(pane.type === "prediction" && pane.predictionId === predictionId)
+        )
+      );
+      setStatusMessage("Prediction deleted.");
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to delete prediction."
+      );
+    }
+  };
+
   const predictionCountsByGameId = useMemo(() => {
     const counts = new Map<string, number>();
     predictions.forEach((prediction) => {
@@ -986,9 +1032,11 @@ export function App() {
                 competitorList={competitorList}
                 onMoveCompetitor={handleMoveCompetitor}
                 onSavePrediction={(id) => setSaveDialogPredictionId(id)}
+                onDeletePrediction={ownsPrediction ? handleDeletePrediction : undefined}
                 onRemovePane={handleRemovePane}
                 saveDisabled={!googleConnected || isCompetitionClosed}
                 saveLabel={isCompetitionClosed ? "Locked" : saveLabel}
+                deleteDisabled={isCompetitionClosed}
               />
             );
           }

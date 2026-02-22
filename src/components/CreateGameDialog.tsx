@@ -87,7 +87,8 @@ export function CreateGameDialog({
           />
         </label>
         <p className="modal-support">
-          Competition predictions lock at the deadline. Fun predictions remain editable.
+          Competition predictions can be edited until the deadline. Fun predictions remain
+          editable.
         </p>
         <div className="modal-actions">
           <button type="button" className="modal-cancel" onClick={onClose}>

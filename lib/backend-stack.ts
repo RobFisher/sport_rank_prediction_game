@@ -77,6 +77,7 @@ export class BackendStack extends Stack {
           CorsHttpMethod.GET,
           CorsHttpMethod.POST,
           CorsHttpMethod.PUT,
+          CorsHttpMethod.DELETE,
           CorsHttpMethod.OPTIONS
         ],
         allowHeaders: [
@@ -160,7 +161,7 @@ export class BackendStack extends Stack {
     });
     api.addRoutes({
       path: "/api/predictions/{predictionId}",
-      methods: [HttpMethod.GET, HttpMethod.PUT],
+      methods: [HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE],
       integration
     });
 

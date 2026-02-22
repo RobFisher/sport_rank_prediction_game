@@ -386,3 +386,14 @@ export async function updatePrediction(
   const parsed = await parseResponse<{ prediction: BackendPrediction }>(response);
   return parsed.prediction;
 }
+
+export async function deletePrediction(predictionId: string): Promise<void> {
+  const response = await fetch(
+    buildApiPath(`/api/predictions/${encodeURIComponent(predictionId)}`),
+    {
+      method: "DELETE",
+      credentials: "include"
+    }
+  );
+  await parseResponse<{ deleted: boolean }>(response);
+}

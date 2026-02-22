@@ -69,21 +69,26 @@ export function GamePredictionsPane({
         ) : sorted.length === 0 ? (
           <p className="empty-state">No predictions yet.</p>
         ) : (
-          <ul className="prediction-list">
-            {sorted.map((prediction) => (
-              <li key={prediction.id} className="prediction-row">
-                <button type="button" onClick={() => onOpenPrediction(prediction.id)}>
-                  <div className="prediction-copy">
-                    <strong>{predictionLabel(prediction)}</strong>
-                    <span>{prediction.ownerDisplayName ?? "Anonymous"}</span>
-                  </div>
-                  <span className="prediction-meta">
-                    {prediction.type === "competition" ? "Competition" : "Fun"}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="pane-meta">
+              Competition entries can be edited until the closing time.
+            </p>
+            <ul className="prediction-list">
+              {sorted.map((prediction) => (
+                <li key={prediction.id} className="prediction-row">
+                  <button type="button" onClick={() => onOpenPrediction(prediction.id)}>
+                    <div className="prediction-copy">
+                      <strong>{predictionLabel(prediction)}</strong>
+                      <span>{prediction.ownerDisplayName ?? "Anonymous"}</span>
+                    </div>
+                    <span className="prediction-meta">
+                      {prediction.type === "competition" ? "Competition" : "Fun"}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </article>

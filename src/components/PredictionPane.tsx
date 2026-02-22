@@ -9,9 +9,11 @@ interface PredictionPaneProps {
   competitorList: CompetitorList;
   onMoveCompetitor: (predictionId: string, fromIndex: number, toIndex: number) => void;
   onSavePrediction: (predictionId: string) => void;
+  onDeletePrediction?: (predictionId: string) => void;
   onRemovePane: (paneIndex: number) => void;
   saveDisabled?: boolean;
   saveLabel?: string;
+  deleteDisabled?: boolean;
 }
 
 export function PredictionPane({
@@ -22,9 +24,11 @@ export function PredictionPane({
   competitorList,
   onMoveCompetitor,
   onSavePrediction,
+  onDeletePrediction,
   onRemovePane,
   saveDisabled,
-  saveLabel
+  saveLabel,
+  deleteDisabled
 }: PredictionPaneProps) {
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -38,6 +42,7 @@ export function PredictionPane({
         ? prediction.name
         : "Untitled fun prediction"
       : "Single-entry competition prediction";
+  const ownerLabel = prediction.ownerDisplayName ?? prediction.ownerUserId ?? "";
 
   return (
     <article className="pane">
@@ -48,6 +53,9 @@ export function PredictionPane({
             {title} • closes {new Date(game.closesAt).toLocaleString()}
           </span>
           <span className="pane-meta">{subtitle}</span>
+          {ownerLabel ? (
+            <span className="pane-meta">By {ownerLabel}</span>
+          ) : null}
         </div>
         <button
           className="pane-export"
@@ -56,6 +64,15 @@ export function PredictionPane({
         >
           {saveLabel ?? "Save"}
         </button>
+        {onDeletePrediction ? (
+          <button
+            className="pane-delete"
+            onClick={() => onDeletePrediction(prediction.id)}
+            disabled={deleteDisabled}
+          >
+            Delete
+          </button>
+        ) : null}
         <button
           className="pane-close"
           onClick={() => onRemovePane(paneIndex)}

@@ -16,6 +16,8 @@ const PREDICTION_SK_META = "META";
 const PREDICTION_GAME_GSI_PK_PREFIX = "GAME#";
 const PREDICTION_COMPETITION_LOCK_PK_PREFIX = "PREDICTION_COMPETITION#";
 const PREDICTION_COMPETITION_LOCK_SK = "LOCK";
+const ADMIN_LOCK_PK = "ADMIN#LOCK";
+const ADMIN_LOCK_SK = "LOCK";
 const USER_PK_PREFIX = "USER#";
 const USER_SK_PROFILE = "PROFILE";
 const SESSION_PK_PREFIX = "SESSION#";
@@ -28,6 +30,7 @@ const inMemoryCompetitorListsById = new Map();
 const inMemoryGamesById = new Map();
 const inMemoryPredictionsById = new Map();
 const inMemoryCompetitionLockByGameUser = new Map();
+let inMemoryAdminLockUserId = null;
 const inMemoryUsersById = new Map();
 const inMemorySessionsById = new Map();
 
@@ -745,7 +748,7 @@ function createInMemoryStore() {
       return { prediction: stored };
     },
 
-    async updatePrediction(actor, predictionId, prediction) {
+    async updatePrediction(actor, predictionId, prediction, game) {
       const existing = inMemoryPredictionsById.get(predictionId);
       if (!existing) {
         return { notFound: true };
@@ -754,17 +757,43 @@ function createInMemoryStore() {
         return { forbidden: true };
       }
       if (existing.type === "competition") {
-        return { locked: true };
+        const closesAt = Date.parse(game.closesAt);
+        if (Number.isFinite(closesAt) && closesAt <= Date.now()) {
+          return { locked: true };
+        }
       }
       const now = new Date().toISOString();
       const updated = {
         ...existing,
-        name: prediction.name ?? "",
+        name: existing.type === "competition" ? "" : prediction.name ?? "",
         competitorIds: prediction.competitorIds,
         updatedAt: now
       };
       inMemoryPredictionsById.set(predictionId, updated);
       return { prediction: updated };
+    },
+
+    async deletePrediction(actor, predictionId, game) {
+      const existing = inMemoryPredictionsById.get(predictionId);
+      if (!existing) {
+        return { notFound: true };
+      }
+      if (existing.ownerUserId !== actor.userId) {
+        return { forbidden: true };
+      }
+      if (existing.type === "competition") {
+        const closesAt = Date.parse(game.closesAt);
+        if (Number.isFinite(closesAt) && closesAt <= Date.now()) {
+          return { locked: true };
+        }
+      }
+      inMemoryPredictionsById.delete(predictionId);
+      if (existing.type === "competition") {
+        const gameId = game.gameId ?? game.id;
+        const lockKey = `${gameId}#${actor.userId}`;
+        inMemoryCompetitionLockByGameUser.delete(lockKey);
+      }
+      return { deleted: true };
     },
 
     async upsertUser(googleIdentity, preferredDisplayName) {
@@ -773,17 +802,24 @@ function createInMemoryStore() {
         normalizeDisplayName(googleIdentity.name) ||
         googleIdentity.email;
       const existing = inMemoryUsersById.get(googleIdentity.sub);
-      const isFirstUser = inMemoryUsersById.size === 0 && !existing;
       const existingIsAdmin = existing?.isAdmin;
       const now = new Date().toISOString();
+      let isAdmin =
+        typeof existingIsAdmin === "boolean"
+          ? existingIsAdmin
+          : false;
+      if (existingIsAdmin && !inMemoryAdminLockUserId) {
+        inMemoryAdminLockUserId = googleIdentity.sub;
+      }
+      if (!existing && !inMemoryAdminLockUserId) {
+        inMemoryAdminLockUserId = googleIdentity.sub;
+        isAdmin = true;
+      }
       const user = {
         userId: googleIdentity.sub,
         email: googleIdentity.email,
         displayName,
-        isAdmin:
-          typeof existingIsAdmin === "boolean"
-            ? existingIsAdmin
-            : isFirstUser || inMemoryUsersById.size === 1,
+        isAdmin,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
       };
@@ -1418,7 +1454,7 @@ async function createDynamoStore() {
       };
     },
 
-    async updatePrediction(actor, predictionId, prediction) {
+    async updatePrediction(actor, predictionId, prediction, game) {
       const existing = await dynamodbClient.send(
         new GetCommand({
           TableName: tableName,
@@ -1435,9 +1471,14 @@ async function createDynamoStore() {
         return { forbidden: true };
       }
       if (String(existing.Item.type) === "competition") {
-        return { locked: true };
+        const closesAt = Date.parse(game.closesAt);
+        if (Number.isFinite(closesAt) && closesAt <= Date.now()) {
+          return { locked: true };
+        }
       }
       const now = new Date().toISOString();
+      const nameValue =
+        String(existing.Item.type) === "competition" ? "" : prediction.name ?? "";
       await dynamodbClient.send(
         new UpdateCommand({
           TableName: tableName,
@@ -1454,7 +1495,7 @@ async function createDynamoStore() {
             "#gsi1sk": "gsi1sk"
           },
           ExpressionAttributeValues: {
-            ":name": prediction.name ?? "",
+            ":name": nameValue,
             ":competitorIds": prediction.competitorIds,
             ":updatedAt": now,
             ":gsi1sk": `PREDICTION#${now}#${predictionId}`
@@ -1468,12 +1509,58 @@ async function createDynamoStore() {
           ownerUserId: String(existing.Item.ownerUserId),
           ownerDisplayName: String(existing.Item.ownerDisplayName),
           type: String(existing.Item.type),
-          name: prediction.name ?? "",
+          name: nameValue,
           competitorIds: prediction.competitorIds,
           createdAt: String(existing.Item.createdAt),
           updatedAt: now
         }
       };
+    },
+
+    async deletePrediction(actor, predictionId, game) {
+      const existing = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${PREDICTION_PK_PREFIX}${predictionId}`,
+            sk: PREDICTION_SK_META
+          }
+        })
+      );
+      if (!existing.Item) {
+        return { notFound: true };
+      }
+      if (String(existing.Item.ownerUserId) !== actor.userId) {
+        return { forbidden: true };
+      }
+      if (String(existing.Item.type) === "competition") {
+        const closesAt = Date.parse(game.closesAt);
+        if (Number.isFinite(closesAt) && closesAt <= Date.now()) {
+          return { locked: true };
+        }
+      }
+      await dynamodbClient.send(
+        new DeleteCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${PREDICTION_PK_PREFIX}${predictionId}`,
+            sk: PREDICTION_SK_META
+          }
+        })
+      );
+      if (String(existing.Item.type) === "competition") {
+        const gameId = game.gameId ?? game.id;
+        await dynamodbClient.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: {
+              pk: `${PREDICTION_COMPETITION_LOCK_PK_PREFIX}${gameId}#${actor.userId}`,
+              sk: PREDICTION_COMPETITION_LOCK_SK
+            }
+          })
+        );
+      }
+      return { deleted: true };
     },
 
     async upsertUser(googleIdentity, preferredDisplayName) {
@@ -1492,37 +1579,69 @@ async function createDynamoStore() {
         isAdmin = false;
       }
       if (!existing.Item) {
-        const usersScan = await dynamodbClient.send(
-          new ScanCommand({
+        const adminLock = await dynamodbClient.send(
+          new GetCommand({
             TableName: tableName,
-            FilterExpression: "begins_with(pk, :prefix) AND sk = :sk",
-            ExpressionAttributeValues: {
-              ":prefix": USER_PK_PREFIX,
-              ":sk": USER_SK_PROFILE
-            },
-            ProjectionExpression: "pk",
-            Limit: 1
+            Key: {
+              pk: ADMIN_LOCK_PK,
+              sk: ADMIN_LOCK_SK
+            }
           })
         );
-        if (!usersScan.Items || usersScan.Items.length === 0) {
-          isAdmin = true;
+        if (adminLock.Item) {
+          isAdmin = false;
+        } else {
+          const usersScan = await dynamodbClient.send(
+            new ScanCommand({
+              TableName: tableName,
+              FilterExpression: "begins_with(pk, :prefix) AND sk = :sk",
+              ExpressionAttributeValues: {
+                ":prefix": USER_PK_PREFIX,
+                ":sk": USER_SK_PROFILE
+              },
+              ProjectionExpression: "pk",
+              Limit: 1,
+              ConsistentRead: true
+            })
+          );
+          if (!usersScan.Items || usersScan.Items.length === 0) {
+            try {
+              await dynamodbClient.send(
+                new PutCommand({
+                  TableName: tableName,
+                  Item: {
+                    pk: ADMIN_LOCK_PK,
+                    sk: ADMIN_LOCK_SK,
+                    itemType: "admin_lock",
+                    userId: googleIdentity.sub,
+                    createdAt: now
+                  },
+                  ConditionExpression: "attribute_not_exists(pk)"
+                })
+              );
+              isAdmin = true;
+            } catch (error) {
+              if (error && error.name === "ConditionalCheckFailedException") {
+                isAdmin = false;
+              } else {
+                throw error;
+              }
+            }
+          } else {
+            isAdmin = false;
+          }
         }
       } else if (typeof existing.Item?.isAdmin !== "boolean") {
-        const usersScan = await dynamodbClient.send(
-          new ScanCommand({
+        const adminLock = await dynamodbClient.send(
+          new GetCommand({
             TableName: tableName,
-            FilterExpression:
-              "begins_with(pk, :prefix) AND sk = :sk AND pk <> :currentPk",
-            ExpressionAttributeValues: {
-              ":prefix": USER_PK_PREFIX,
-              ":sk": USER_SK_PROFILE,
-              ":currentPk": `${USER_PK_PREFIX}${googleIdentity.sub}`
-            },
-            ProjectionExpression: "pk",
-            Limit: 1
+            Key: {
+              pk: ADMIN_LOCK_PK,
+              sk: ADMIN_LOCK_SK
+            }
           })
         );
-        if (!usersScan.Items || usersScan.Items.length === 0) {
+        if (adminLock.Item?.userId === googleIdentity.sub) {
           isAdmin = true;
         }
       }
@@ -2211,6 +2330,9 @@ export async function handler(event) {
         if (!existing) {
           return json(404, { message: "Prediction not found." });
         }
+        if (existing.type === "competition") {
+          update.name = "";
+        }
         const game = await store.getGame(existing.gameId);
         if (!game) {
           return json(400, { message: "Unknown gameId." });
@@ -2228,7 +2350,7 @@ export async function handler(event) {
             message: `Unknown competitor ids: ${invalidIds.join(", ")}`
           });
         }
-        const updated = await store.updatePrediction(actor, predictionId, update);
+        const updated = await store.updatePrediction(actor, predictionId, update, game);
         if (updated.notFound) {
           return json(404, { message: "Prediction not found." });
         }
@@ -2236,7 +2358,7 @@ export async function handler(event) {
           return json(403, { message: "Only the prediction owner can update it." });
         }
         if (updated.locked) {
-          return json(409, { message: "Competition predictions cannot be updated." });
+          return json(409, { message: "Competition predictions are closed." });
         }
         return json(200, { prediction: updated.prediction });
       } catch (error) {
@@ -2244,6 +2366,32 @@ export async function handler(event) {
           message: error instanceof Error ? error.message : "Invalid request."
         });
       }
+    }
+
+    if (predictionId && method === "DELETE") {
+      const unauthorized = requireActor(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      const existing = await store.getPrediction(predictionId);
+      if (!existing) {
+        return json(404, { message: "Prediction not found." });
+      }
+      const game = await store.getGame(existing.gameId);
+      if (!game) {
+        return json(400, { message: "Unknown gameId." });
+      }
+      const deleted = await store.deletePrediction(actor, predictionId, game);
+      if (deleted.notFound) {
+        return json(404, { message: "Prediction not found." });
+      }
+      if (deleted.forbidden) {
+        return json(403, { message: "Only the prediction owner can delete it." });
+      }
+      if (deleted.locked) {
+        return json(409, { message: "Competition predictions are closed." });
+      }
+      return json(200, { deleted: true });
     }
 
     return json(404, { message: `No route for ${method} ${path}` });
