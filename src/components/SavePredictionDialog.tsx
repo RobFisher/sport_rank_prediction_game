@@ -4,6 +4,8 @@ import type { Prediction } from "../predictionModel.js";
 interface SavePredictionDialogProps {
   open: boolean;
   prediction: Prediction | null;
+  mode: "save" | "save-as";
+  saveLabel: string;
   onSave: (name: string) => void;
   onClose: () => void;
 }
@@ -11,6 +13,8 @@ interface SavePredictionDialogProps {
 export function SavePredictionDialog({
   open,
   prediction,
+  mode,
+  saveLabel,
   onSave,
   onClose
 }: SavePredictionDialogProps) {
@@ -26,8 +30,10 @@ export function SavePredictionDialog({
     return null;
   }
 
+  const isSaveAs = mode === "save-as";
   const trimmedName = name.trim();
-  const canSave = prediction.type === "fun" && trimmedName.length > 0;
+  const requiresName = isSaveAs || prediction.type === "fun";
+  const canSave = !requiresName || trimmedName.length > 0;
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -51,21 +57,25 @@ export function SavePredictionDialog({
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            disabled={prediction.type === "competition"}
+            disabled={!isSaveAs && prediction.type === "competition"}
             placeholder={
-              prediction.type === "competition" ? "Not used for competition entries" : ""
+              !isSaveAs && prediction.type === "competition"
+                ? "Not used for competition entries"
+                : ""
             }
           />
         </label>
         <p className="modal-support">
-          Competition predictions are locked once saved. Fun predictions can be edited later.
+          {isSaveAs
+            ? "This creates a new fun prediction under your account."
+            : "Competition predictions can be edited until the game closes. Fun predictions can be edited any time."}
         </p>
         <div className="modal-actions">
           <button type="button" className="modal-cancel" onClick={onClose}>
             Cancel
           </button>
           <button type="submit" className="modal-create" disabled={!canSave}>
-            Save
+            {saveLabel}
           </button>
         </div>
       </form>
