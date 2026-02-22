@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./app.css";
 import {
   createPredictionFromGame,
@@ -7,16 +7,45 @@ import {
   type Prediction,
   type PredictionType
 } from "./predictionModel.js";
+import {
+  createBackendGoogleSession,
+  getBackendMe,
+  logoutBackendSession,
+  type BackendSessionUser
+} from "./backendApi.js";
 import { WorkspaceHeader } from "./components/WorkspaceHeader.js";
 import { PredictionPane } from "./components/PredictionPane.js";
 import { NewPredictionDialog } from "./components/NewPredictionDialog.js";
 import { SavePredictionDialog } from "./components/SavePredictionDialog.js";
+import { GoogleDisplayNameDialog } from "./components/GoogleDisplayNameDialog.js";
+import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
 const initialPanePredictionIds = seedData.predictions.map((prediction) => prediction.id);
+const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
 
 function createPredictionId(counterRef: { current: number }): string {
   counterRef.current += 1;
   return `prediction-${counterRef.current}`;
+}
+
+function normalizeDisplayName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function parseDisplayNameMap(raw: string | null): Record<string, string> {
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([userId, name]) => [userId, typeof name === "string" ? name : ""])
+        .filter(([userId, name]) => userId.trim().length > 0 && name.trim().length > 0)
+    );
+  } catch {
+    return {};
+  }
 }
 
 export function App() {
@@ -29,8 +58,25 @@ export function App() {
   const [newPredictionDialogOpen, setNewPredictionDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState(
-    "Using local placeholder data. Backend and login flows are stubbed."
+    "Using local placeholder data. Login works when the local backend is running."
   );
+  const [googleDisplayNameByUserId, setGoogleDisplayNameByUserId] = useState<
+    Record<string, string>
+  >(() => parseDisplayNameMap(localStorage.getItem(GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY)));
+  const [googleDisplayNameDraft, setGoogleDisplayNameDraft] = useState("");
+  const [googleDisplayNameDialogOpen, setGoogleDisplayNameDialogOpen] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<string | null>(null);
+  const [backendSessionUser, setBackendSessionUser] = useState<BackendSessionUser | null>(
+    null
+  );
+  const {
+    googleToken,
+    googleUser,
+    googleAuthError,
+    googleAuthLoading,
+    connectGoogle,
+    disconnectGoogle
+  } = useGoogleAuth();
   const predictionIdCounter = useRef(predictions.length);
 
   const gamesById = useMemo(() => {
@@ -48,6 +94,159 @@ export function App() {
   const panePredictions = panePredictionIds
     .map((predictionId) => predictionsById.get(predictionId))
     .filter((prediction): prediction is Prediction => Boolean(prediction));
+
+  const googleConnected = Boolean(backendSessionUser);
+  const googleStatus = googleConnected
+    ? `Google: ${backendSessionUser?.displayName ?? backendSessionUser?.email ?? "Connected"}`
+    : null;
+
+  useEffect(() => {
+    localStorage.setItem(
+      GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY,
+      JSON.stringify(googleDisplayNameByUserId)
+    );
+  }, [googleDisplayNameByUserId]);
+
+  useEffect(() => {
+    if (!googleUser) {
+      setGoogleDisplayNameDialogOpen(false);
+      setGoogleDisplayNameDraft("");
+      return;
+    }
+
+    const existingDisplayName = googleDisplayNameByUserId[googleUser.sub];
+    if (existingDisplayName) {
+      setGoogleDisplayNameDialogOpen(false);
+      return;
+    }
+
+    setGoogleDisplayNameDraft(normalizeDisplayName(googleUser.name) || googleUser.email);
+    setGoogleDisplayNameDialogOpen(true);
+  }, [googleDisplayNameByUserId, googleUser]);
+
+  async function refreshBackendSessionStatus(): Promise<BackendSessionUser | null> {
+    try {
+      const me = await getBackendMe();
+      if (me.authenticated && me.user) {
+        setBackendSessionUser(me.user);
+        setBackendStatus(`Backend session active for ${me.user.displayName}.`);
+        return me.user;
+      }
+      setBackendSessionUser(null);
+      setBackendStatus("Backend reachable. No active app session.");
+      return null;
+    } catch (error) {
+      setBackendSessionUser(null);
+      setBackendStatus(
+        error instanceof Error
+          ? `Backend not reachable: ${error.message}`
+          : "Backend not reachable from this environment."
+      );
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const user = await refreshBackendSessionStatus();
+      if (!cancelled && !user) {
+        setBackendSessionUser(null);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function establishBackendSession(
+    accessToken: string,
+    fallbackUserId: string,
+    fallbackEmail: string,
+    fallbackName: string
+  ): Promise<void> {
+    const preferredDisplayName =
+      googleDisplayNameByUserId[fallbackUserId] ??
+      (normalizeDisplayName(fallbackName) || fallbackEmail);
+    try {
+      const me = await createBackendGoogleSession(accessToken, preferredDisplayName);
+      if (me.authenticated && me.user) {
+        setBackendSessionUser(me.user);
+        setBackendStatus(`Backend session active for ${me.user.displayName}.`);
+      } else {
+        await refreshBackendSessionStatus();
+      }
+    } catch (error) {
+      setBackendStatus(
+        error instanceof Error
+          ? error.message
+          : "Failed to establish backend session after Google login."
+      );
+    }
+  }
+
+  function toggleGoogleConnection(): void {
+    if (googleConnected) {
+      void (async () => {
+        await logoutBackendSession();
+        await disconnectGoogle();
+        setBackendSessionUser(null);
+        setGoogleDisplayNameDialogOpen(false);
+        setBackendStatus("Signed out.");
+      })();
+      return;
+    }
+    void (async () => {
+      const result = await connectGoogle();
+      if (!result) {
+        return;
+      }
+      const existingDisplayName = googleDisplayNameByUserId[result.user.sub];
+      if (!existingDisplayName) {
+        setGoogleDisplayNameDraft(normalizeDisplayName(result.user.name) || result.user.email);
+        setGoogleDisplayNameDialogOpen(true);
+      }
+      await establishBackendSession(
+        result.accessToken,
+        result.user.sub,
+        result.user.email,
+        result.user.name
+      );
+    })();
+  }
+
+  function saveGoogleDisplayName(): void {
+    if (!googleUser) {
+      return;
+    }
+    const normalizedDisplayName = normalizeDisplayName(googleDisplayNameDraft);
+    if (!normalizedDisplayName) {
+      return;
+    }
+    setGoogleDisplayNameByUserId((prev) => ({
+      ...prev,
+      [googleUser.sub]: normalizedDisplayName
+    }));
+    setGoogleDisplayNameDialogOpen(false);
+    if (googleToken) {
+      void establishBackendSession(
+        googleToken,
+        googleUser.sub,
+        googleUser.email,
+        normalizedDisplayName
+      );
+    }
+  }
+
+  function cancelGoogleDisplayNameSetup(): void {
+    setGoogleDisplayNameDialogOpen(false);
+    void (async () => {
+      await logoutBackendSession();
+      await disconnectGoogle();
+      setBackendSessionUser(null);
+    })();
+  }
 
   const handleMoveCompetitor = (predictionId: string, fromIndex: number, toIndex: number) => {
     setPredictions((current) =>
@@ -123,8 +322,14 @@ export function App() {
         projectName="F1 2026 Predictions"
         statusMessage={statusMessage}
         canAddPane={true}
+        googleConnected={googleConnected}
+        googleBusy={googleAuthLoading}
+        googleAuthError={googleAuthError}
+        googleStatus={googleStatus}
+        backendStatus={backendStatus}
         onNewPrediction={() => setNewPredictionDialogOpen(true)}
         onLoadSample={handleReloadSample}
+        onToggleGoogleConnection={toggleGoogleConnection}
       />
       <section className="pane-grid">
         {panePredictions.map((prediction, paneIndex) => {
@@ -169,6 +374,14 @@ export function App() {
           handleSavePrediction(saveDialogPredictionId, type, name);
         }}
         onClose={() => setSaveDialogPredictionId(null)}
+      />
+      <GoogleDisplayNameDialog
+        isOpen={googleDisplayNameDialogOpen}
+        email={googleUser?.email ?? ""}
+        displayName={googleDisplayNameDraft}
+        onDisplayNameChange={setGoogleDisplayNameDraft}
+        onSave={saveGoogleDisplayName}
+        onCancel={cancelGoogleDisplayNameSetup}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 This guide is ordered to minimize repetition:
 
 1. Run locally with placeholder data and no backend.
-2. (Later) Add Google login and backend session flow.
+2. Add Google login and backend session flow.
 3. Deploy to AWS with CDK.
 
 ## 1) Initial Local Run (No Backend Yet)
@@ -42,10 +42,9 @@ Notes:
 - The UI uses local placeholder data for games, competitors, and predictions.
 - Backend endpoints are stubbed and will be wired later.
 
-## 2) Add Google Integration (Later)
+## 2) Add Google Integration
 
-Google sign-in will pair with backend session endpoints (`/api/*`).
-When those endpoints are wired, run both the frontend and local API server.
+Google sign-in pairs with backend session endpoints (`/api/*`), so run both the frontend and local API server.
 
 ### Configure `.env.local`
 
@@ -60,7 +59,7 @@ VITE_GOOGLE_CLIENT_ID=your_google_oauth_web_client_id
 `http://127.0.0.1:5173`
 2. Ensure OAuth consent screen and test-user access are configured for your account.
 
-### Run Frontend + Local API (once backend exists)
+### Run Frontend + Local API
 
 Terminal A:
 ```bash
@@ -74,7 +73,7 @@ npm run dev
 
 Notes:
 - Frontend calls `/api/*`; Vite proxies to `http://127.0.0.1:8787` by default.
-- Local backend data will be stored in memory or a local DB once implemented.
+- Local backend data is stored in memory (sessions + users) until persistence is wired.
 
 ## 3) Deploy to AWS (CDK)
 
