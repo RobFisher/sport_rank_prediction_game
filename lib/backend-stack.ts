@@ -146,7 +146,7 @@ export class BackendStack extends Stack {
     });
     api.addRoutes({
       path: "/api/games/{gameId}",
-      methods: [HttpMethod.GET, HttpMethod.PUT],
+      methods: [HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE],
       integration
     });
     api.addRoutes({

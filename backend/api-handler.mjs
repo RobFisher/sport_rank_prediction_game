@@ -681,6 +681,26 @@ function createInMemoryStore() {
       return { game: buildGameSummary(updated) };
     },
 
+    async deleteGameAndPredictions(gameId) {
+      if (!inMemoryGamesById.has(gameId)) {
+        return { notFound: true };
+      }
+      let removedPredictions = 0;
+      for (const [predictionId, prediction] of inMemoryPredictionsById.entries()) {
+        if (prediction.gameId !== gameId) {
+          continue;
+        }
+        inMemoryPredictionsById.delete(predictionId);
+        removedPredictions += 1;
+        if (prediction.type === "competition") {
+          const lockKey = `${gameId}#${prediction.ownerUserId}`;
+          inMemoryCompetitionLockByGameUser.delete(lockKey);
+        }
+      }
+      inMemoryGamesById.delete(gameId);
+      return { deleted: true, removedPredictions };
+    },
+
     async listPredictionsForGame(gameId) {
       return [...inMemoryPredictionsById.values()]
         .filter((prediction) => prediction.gameId === gameId)
@@ -1321,6 +1341,62 @@ async function createDynamoStore() {
           results: game.results ?? null
         }
       };
+    },
+
+    async deleteGameAndPredictions(gameId) {
+      const existing = await dynamodbClient.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${GAME_PK_PREFIX}${gameId}`,
+            sk: GAME_SK_META
+          }
+        })
+      );
+      if (!existing.Item) {
+        return { notFound: true };
+      }
+
+      const predictions = await listPredictionsForGameFromDynamoQuery(
+        dynamodbClient,
+        QueryCommand,
+        tableName,
+        gameId
+      );
+      for (const prediction of predictions) {
+        await dynamodbClient.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: {
+              pk: `${PREDICTION_PK_PREFIX}${prediction.predictionId}`,
+              sk: PREDICTION_SK_META
+            }
+          })
+        );
+        if (prediction.type === "competition") {
+          await dynamodbClient.send(
+            new DeleteCommand({
+              TableName: tableName,
+              Key: {
+                pk: `${PREDICTION_COMPETITION_LOCK_PK_PREFIX}${gameId}#${prediction.ownerUserId}`,
+                sk: PREDICTION_COMPETITION_LOCK_SK
+              }
+            })
+          );
+        }
+      }
+
+      await dynamodbClient.send(
+        new DeleteCommand({
+          TableName: tableName,
+          Key: {
+            pk: `${GAME_PK_PREFIX}${gameId}`,
+            sk: GAME_SK_META
+          }
+        })
+      );
+
+      return { deleted: true, removedPredictions: predictions.length };
     },
 
     async listPredictionsForGame(gameId) {
@@ -2246,6 +2322,21 @@ export async function handler(event) {
           message: error instanceof Error ? error.message : "Invalid request."
         });
       }
+    }
+
+    if (gameId && method === "DELETE") {
+      const unauthorized = requireAdmin(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      const deleted = await store.deleteGameAndPredictions(gameId);
+      if (deleted.notFound) {
+        return json(404, { message: "Game not found." });
+      }
+      return json(200, {
+        deleted: true,
+        removedPredictions: deleted.removedPredictions ?? 0
+      });
     }
 
     if (gamePredictionsId && method === "GET") {

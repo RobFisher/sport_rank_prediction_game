@@ -13,6 +13,7 @@ import {
   createBackendGoogleSession,
   createGame,
   deletePrediction,
+  deleteGame,
   getBackendMe,
   getPrediction,
   listCompetitorLists,
@@ -36,6 +37,7 @@ import { CreateGameDialog } from "./components/CreateGameDialog.js";
 import { GamesPane } from "./components/GamesPane.js";
 import { GamePredictionsPane } from "./components/GamePredictionsPane.js";
 import { RulesDialog } from "./components/RulesDialog.js";
+import { DeleteGameDialog } from "./components/DeleteGameDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
 const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
@@ -230,6 +232,7 @@ export function App() {
   const [createGameDialogOpen, setCreateGameDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
+  const [deleteGameTargetId, setDeleteGameTargetId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Loading data from backend...");
   const [googleDisplayNameByUserId, setGoogleDisplayNameByUserId] = useState<
     Record<string, string>
@@ -902,6 +905,48 @@ export function App() {
     }
   };
 
+  const handleRequestDeleteGame = (gameId: string) => {
+    setDeleteGameTargetId(gameId);
+  };
+
+  const handleConfirmDeleteGame = async () => {
+    const game = deleteGameTargetId ? gamesById.get(deleteGameTargetId) : null;
+    if (!game) {
+      setDeleteGameTargetId(null);
+      return;
+    }
+    try {
+      const result = await deleteGame(game.id);
+      setGames((current) => current.filter((entry) => entry.id !== game.id));
+      const removedIds = new Set(
+        predictions.filter((entry) => entry.gameId === game.id).map((entry) => entry.id)
+      );
+      setPredictions((current) => current.filter((entry) => entry.gameId !== game.id));
+      setPanes((current) =>
+        current.filter((pane) => {
+          if (pane.type === "game-predictions" && pane.gameId === game.id) {
+            return false;
+          }
+          if (pane.type === "prediction" && removedIds.has(pane.predictionId)) {
+            return false;
+          }
+          return true;
+        })
+      );
+      if (saveDialogPredictionId && removedIds.has(saveDialogPredictionId)) {
+        setSaveDialogPredictionId(null);
+      }
+      setDeleteGameTargetId(null);
+      setStatusMessage(
+        `Deleted "${game.name}" and ${result.removedPredictions ?? 0} predictions.`
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to delete game."
+      );
+    }
+  };
+
   const predictionCountsByGameId = useMemo(() => {
     const counts = new Map<string, number>();
     predictions.forEach((prediction) => {
@@ -974,6 +1019,8 @@ export function App() {
                 predictionCountsByGameId={predictionCountsByGameId}
                 canCreateGame={isAdmin}
                 onCreateGame={() => setCreateGameDialogOpen(true)}
+                canDeleteGame={isAdmin}
+                onDeleteGame={handleRequestDeleteGame}
                 onOpenGame={handleOpenGamePredictions}
               />
             );
@@ -1088,6 +1135,12 @@ export function App() {
         onClose={() => setSaveDialogPredictionId(null)}
       />
       <RulesDialog open={rulesDialogOpen} onClose={() => setRulesDialogOpen(false)} />
+      <DeleteGameDialog
+        open={deleteGameTargetId !== null}
+        game={deleteGameTargetId ? gamesById.get(deleteGameTargetId) ?? null : null}
+        onConfirm={handleConfirmDeleteGame}
+        onClose={() => setDeleteGameTargetId(null)}
+      />
       <GoogleDisplayNameDialog
         isOpen={googleDisplayNameDialogOpen}
         email={googleUser?.email ?? ""}

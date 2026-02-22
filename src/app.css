@@ -238,6 +238,13 @@ body {
   gap: 8px;
 }
 
+.game-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
 .game-row button,
 .prediction-row button {
   width: 100%;
@@ -257,6 +264,19 @@ body {
 .prediction-row button:hover {
   border-color: #4a74b8;
   box-shadow: 0 0 0 2px rgba(74, 116, 184, 0.18);
+}
+
+.game-open {
+  flex: 1;
+}
+
+.game-delete {
+  border: 1px solid #c8d2e2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f7f9fc;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .game-copy,

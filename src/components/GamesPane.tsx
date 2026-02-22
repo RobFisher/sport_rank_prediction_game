@@ -6,6 +6,8 @@ interface GamesPaneProps {
   predictionCountsByGameId: Map<string, number>;
   canCreateGame: boolean;
   onCreateGame: () => void;
+  canDeleteGame: boolean;
+  onDeleteGame: (gameId: string) => void;
   onOpenGame: (gameId: string) => void;
 }
 
@@ -15,6 +17,8 @@ export function GamesPane({
   predictionCountsByGameId,
   canCreateGame,
   onCreateGame,
+  canDeleteGame,
+  onDeleteGame,
   onOpenGame
 }: GamesPaneProps) {
   return (
@@ -43,7 +47,11 @@ export function GamesPane({
               const count = predictionCountsByGameId.get(game.id);
               return (
                 <li key={game.id} className="game-row">
-                  <button type="button" onClick={() => onOpenGame(game.id)}>
+                  <button
+                    type="button"
+                    className="game-open"
+                    onClick={() => onOpenGame(game.id)}
+                  >
                     <div className="game-copy">
                       <strong>{game.name}</strong>
                       <span>Closes {new Date(game.closesAt).toLocaleString()}</span>
@@ -52,6 +60,15 @@ export function GamesPane({
                       {predictionsLoaded ? `${count ?? 0} predictions` : "--"}
                     </span>
                   </button>
+                  {canDeleteGame ? (
+                    <button
+                      type="button"
+                      className="game-delete"
+                      onClick={() => onDeleteGame(game.id)}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                 </li>
               );
             })}

@@ -312,6 +312,17 @@ export async function updateGame(
   return parsed.game;
 }
 
+export async function deleteGame(gameId: string): Promise<{
+  deleted: boolean;
+  removedPredictions: number;
+}> {
+  const response = await fetch(buildApiPath(`/api/games/${encodeURIComponent(gameId)}`), {
+    method: "DELETE",
+    credentials: "include"
+  });
+  return await parseResponse<{ deleted: boolean; removedPredictions: number }>(response);
+}
+
 export interface BackendPredictionInput {
   id: string;
   gameId: string;
