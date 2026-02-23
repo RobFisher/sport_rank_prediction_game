@@ -7,9 +7,11 @@ interface WorkspaceHeaderProps {
   googleStatus: string | null;
   backendStatus: string | null;
   canUploadCompetitors: boolean;
+  refreshLoading: boolean;
   onOpenRules: () => void;
   onToggleGoogleConnection: () => void;
   onUploadCompetitors: () => void;
+  onRefreshVisiblePanes: () => void;
 }
 
 export function WorkspaceHeader({
@@ -21,9 +23,11 @@ export function WorkspaceHeader({
   googleStatus,
   backendStatus,
   canUploadCompetitors,
+  refreshLoading,
   onOpenRules,
   onToggleGoogleConnection,
-  onUploadCompetitors
+  onUploadCompetitors,
+  onRefreshVisiblePanes
 }: WorkspaceHeaderProps) {
   return (
     <header className="workspace-header">
@@ -38,6 +42,9 @@ export function WorkspaceHeader({
       <div className="workspace-actions">
         <div className="workspace-primary-actions">
           <button onClick={onOpenRules}>Rules</button>
+          <button onClick={onRefreshVisiblePanes} disabled={refreshLoading}>
+            {refreshLoading ? "Refreshing..." : "Refresh"}
+          </button>
           {canUploadCompetitors && (
             <button onClick={onUploadCompetitors} title="Upload competitor list JSON">
               Admin: Upload Competitors

@@ -248,6 +248,7 @@ export function App() {
   );
   const [predictionsLoaded, setPredictionsLoaded] = useState(false);
   const [predictionsLoading, setPredictionsLoading] = useState(false);
+  const [refreshLoading, setRefreshLoading] = useState(false);
   const competitorListInputRef = useRef<HTMLInputElement | null>(null);
   const {
     googleToken,
@@ -366,6 +367,28 @@ export function App() {
     setGames(loaded.map(toUiGame));
   };
 
+  const mergePredictionsPreservingDirty = (
+    current: Prediction[],
+    incoming: Prediction[]
+  ): Prediction[] => {
+    const byId = new Map(current.map((prediction) => [prediction.id, prediction]));
+    incoming.forEach((prediction) => {
+      if (dirtyPredictionIds.has(prediction.id)) {
+        return;
+      }
+      byId.set(prediction.id, prediction);
+    });
+    return [...byId.values()];
+  };
+
+  const applyIncomingPredictions = (incoming: Prediction[]) => {
+    if (incoming.length === 0) {
+      return;
+    }
+    setPredictions((current) => mergePredictionsPreservingDirty(current, incoming));
+    mergePersistedPredictions(incoming);
+  };
+
   const loadPredictionsForGames = async (gamesToLoad: Game[]) => {
     if (!backendSessionUser || gamesToLoad.length === 0) {
       setPredictions([]);
@@ -399,24 +422,38 @@ export function App() {
     }
   };
 
-  const ensurePredictionsForGame = async (gameId: string) => {
+  const refreshPredictionsForGame = async (gameId: string) => {
     if (!backendSessionUser) {
-      return;
-    }
-    if (predictionsByGameId.has(gameId)) {
       return;
     }
     try {
       const loaded = await listPredictionsForGame(gameId);
       const uiPredictions = loaded.map(toUiPrediction);
-      setPredictions((current) => mergePredictions(current, uiPredictions));
-      mergePersistedPredictions(uiPredictions);
+      applyIncomingPredictions(uiPredictions);
     } catch (error) {
       setStatusMessage(
         error instanceof Error
           ? `Failed to load predictions: ${error.message}`
           : "Failed to load predictions."
       );
+    }
+  };
+
+  const refreshPredictionById = async (predictionId: string): Promise<boolean> => {
+    if (!backendSessionUser) {
+      return false;
+    }
+    try {
+      const loaded = await getPrediction(predictionId);
+      applyIncomingPredictions([toUiPrediction(loaded)]);
+      return true;
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to refresh the selected prediction."
+      );
+      return false;
     }
   };
 
@@ -867,8 +904,8 @@ export function App() {
     }
   };
 
-  const handleOpenGamePredictions = (gameId: string) => {
-    void ensurePredictionsForGame(gameId);
+  const handleOpenGamePredictions = async (gameId: string) => {
+    await refreshPredictionsForGame(gameId);
     setPanes((current) => {
       if (current.some((pane) => pane.type === "game-predictions" && pane.gameId === gameId)) {
         return current;
@@ -881,18 +918,12 @@ export function App() {
   };
 
   const handleOpenPredictionPane = async (predictionId: string) => {
-    if (!predictionsById.has(predictionId)) {
-      try {
-        const loaded = await getPrediction(predictionId);
-        const uiPrediction = toUiPrediction(loaded);
-        setPredictions((current) => mergePredictions(current, [uiPrediction]));
-        mergePersistedPredictions([uiPrediction]);
-      } catch (error) {
-        setStatusMessage(
-          error instanceof Error
-            ? error.message
-            : "Failed to load the selected prediction."
-        );
+    const alreadyOpen = panes.some(
+      (pane) => pane.type === "prediction" && pane.predictionId === predictionId
+    );
+    if (!alreadyOpen) {
+      const refreshed = await refreshPredictionById(predictionId);
+      if (!refreshed && !predictionsById.has(predictionId)) {
         return;
       }
     }
@@ -905,6 +936,66 @@ export function App() {
         { id: createPaneId("prediction"), type: "prediction", predictionId }
       ];
     });
+  };
+
+  const handleRefreshVisiblePanes = async () => {
+    if (refreshLoading) {
+      return;
+    }
+    setRefreshLoading(true);
+    try {
+      const hasGamesPane = panes.some((pane) => pane.type === "games");
+      const visibleGameIds = [...new Set(
+        panes
+          .filter((pane): pane is Extract<PaneDescriptor, { type: "game-predictions" }> => pane.type === "game-predictions")
+          .map((pane) => pane.gameId)
+      )];
+      const visiblePredictionIds = [...new Set(
+        panes
+          .filter((pane): pane is Extract<PaneDescriptor, { type: "prediction" }> => pane.type === "prediction")
+          .map((pane) => pane.predictionId)
+      )];
+
+      if (hasGamesPane) {
+        await Promise.all([refreshGames(), refreshCompetitorLists()]);
+      }
+      if (!backendSessionUser) {
+        setStatusMessage("Refreshed visible game data.");
+        return;
+      }
+
+      const [gamePredictionBatches, predictionDetails] = await Promise.all([
+        Promise.all(
+          visibleGameIds.map(async (gameId) => {
+            const loaded = await listPredictionsForGame(gameId);
+            return loaded.map(toUiPrediction);
+          })
+        ),
+        Promise.all(
+          visiblePredictionIds.map(async (predictionId) => {
+            const loaded = await getPrediction(predictionId);
+            return toUiPrediction(loaded);
+          })
+        )
+      ]);
+
+      applyIncomingPredictions([
+        ...gamePredictionBatches.flat(),
+        ...predictionDetails
+      ]);
+      const skippedDirty = visiblePredictionIds.filter((id) => dirtyPredictionIds.has(id)).length;
+      setStatusMessage(
+        skippedDirty > 0
+          ? `Refreshed visible panes (kept ${skippedDirty} pane(s) with unsaved changes).`
+          : "Refreshed visible panes."
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to refresh visible panes."
+      );
+    } finally {
+      setRefreshLoading(false);
+    }
   };
 
   const handleRemovePane = (paneIndex: number) => {
@@ -1087,9 +1178,11 @@ export function App() {
         googleStatus={googleStatus}
         backendStatus={backendStatus}
         canUploadCompetitors={isAdmin}
+        refreshLoading={refreshLoading}
         onOpenRules={() => setRulesDialogOpen(true)}
         onToggleGoogleConnection={toggleGoogleConnection}
         onUploadCompetitors={handleUploadCompetitors}
+        onRefreshVisiblePanes={() => void handleRefreshVisiblePanes()}
       />
       <section className="pane-grid">
         {panes.map((pane, paneIndex) => {
@@ -1104,7 +1197,9 @@ export function App() {
                 onCreateGame={() => setCreateGameDialogOpen(true)}
                 canDeleteGame={isAdmin}
                 onDeleteGame={handleRequestDeleteGame}
-                onOpenGame={handleOpenGamePredictions}
+                onOpenGame={(gameId) => {
+                  void handleOpenGamePredictions(gameId);
+                }}
               />
             );
           }
