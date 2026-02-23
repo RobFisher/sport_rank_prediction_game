@@ -729,7 +729,11 @@ export function App() {
         return;
       }
       const trimmedName = name.trim();
+      const desiredName = desiredType === "competition" ? "" : trimmedName;
+      const currentName =
+        prediction.type === "competition" ? "" : prediction.name.trim();
       const ownsPrediction = isOwnPrediction(prediction);
+      const createAsNew = !ownsPrediction || desiredType !== prediction.type || desiredName !== currentName;
       const game = gamesById.get(prediction.gameId);
       if (!game) {
         setStatusMessage("Prediction game not found.");
@@ -750,7 +754,7 @@ export function App() {
     if (desiredType === "competition") {
       if (
         hasCompetitionForGame(prediction.gameId) &&
-        !(ownsPrediction && prediction.type === "competition")
+        !(ownsPrediction && prediction.type === "competition" && !createAsNew)
       ) {
         setStatusMessage("You already have a competition prediction for this game.");
         return;
@@ -807,9 +811,9 @@ export function App() {
       }
 
       try {
-      if (ownsPrediction && desiredType === prediction.type) {
+      if (!createAsNew) {
         const updated = await updatePrediction(predictionId, {
-          name: prediction.type === "competition" ? "" : trimmedName,
+          name: desiredName,
           competitorIds: prediction.competitorIds
         });
           setPredictions((current) =>
@@ -825,25 +829,31 @@ export function App() {
           id: createPredictionId(),
           gameId: prediction.gameId,
           type: desiredType,
-          name: desiredType === "competition" ? "" : trimmedName,
+          name: desiredName,
           competitorIds: prediction.competitorIds
         });
         const uiPrediction = toUiPrediction(created);
-        setPredictions((current) => mergePredictions(current, [uiPrediction]));
-        mergePersistedPredictions([uiPrediction]);
-        setPanes((current) => [
-          ...current,
-          {
-            id: createPaneId("prediction"),
-            type: "prediction",
-            predictionId: uiPrediction.id
+        const persistedOriginal = persistedPredictionsById.get(prediction.id);
+        setPredictions((current) => {
+          let next = mergePredictions(current, [uiPrediction]);
+          if (persistedOriginal) {
+            next = mergePredictions(next, [persistedOriginal]);
           }
-        ]);
+          return next;
+        });
+        mergePersistedPredictions([uiPrediction]);
+        setPanes((current) =>
+          current.map((pane) =>
+            pane.type === "prediction" && pane.predictionId === prediction.id
+              ? { ...pane, predictionId: uiPrediction.id }
+              : pane
+          )
+        );
         setSaveDialogPredictionId(null);
         setStatusMessage(
           desiredType === "competition"
-            ? "Saved a new competition prediction."
-            : `Saved a new fun prediction: "${trimmedName}".`
+            ? "Saved as a new competition prediction."
+            : `Saved as a new fun prediction: "${desiredName}".`
         );
       } catch (error) {
         setStatusMessage(
@@ -1057,10 +1067,13 @@ export function App() {
     : null;
   const activeSaveCompetitionAllowed = Boolean(
     activeSavePrediction &&
-      !hasCompetitionForGame(activeSavePrediction.gameId) &&
       activeSaveGame &&
       Number.isFinite(Date.parse(activeSaveGame.closesAt)) &&
-      Date.parse(activeSaveGame.closesAt) > Date.now()
+      Date.parse(activeSaveGame.closesAt) > Date.now() &&
+      (
+        (isOwnPrediction(activeSavePrediction) && activeSavePrediction.type === "competition") ||
+        !hasCompetitionForGame(activeSavePrediction.gameId)
+      )
   );
 
   return (
@@ -1186,18 +1199,8 @@ export function App() {
       <SavePredictionDialog
         open={saveDialogPredictionId !== null}
         prediction={activeSavePrediction}
-        mode={
-          activeSavePrediction && isOwnPrediction(activeSavePrediction)
-            ? "save"
-            : "save-as"
-        }
-        saveLabel={
-          activeSavePrediction && isOwnPrediction(activeSavePrediction)
-            ? "Save"
-            : "Save As"
-        }
+        saveLabel="Save"
         allowCompetition={activeSaveCompetitionAllowed}
-        allowTypeChange={activeSaveCompetitionAllowed}
         onSave={(type, name) => {
           if (!saveDialogPredictionId) {
             return;
