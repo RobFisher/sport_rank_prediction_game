@@ -44,8 +44,37 @@ export function PredictionPane({
       : "Single-entry competition prediction";
   const ownerLabel = prediction.ownerDisplayName ?? prediction.ownerUserId ?? "";
 
+  function commitDragDrop(fromIndex: number, rawToIndex: number): void {
+    const adjustedToIndex = fromIndex < rawToIndex ? rawToIndex - 1 : rawToIndex;
+    if (fromIndex !== adjustedToIndex) {
+      onMoveCompetitor(prediction.id, fromIndex, adjustedToIndex);
+    }
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLOListElement>): void {
+    if (dragFromIndex === null || dragOverIndex === null) {
+      return;
+    }
+    event.preventDefault();
+    const fromIndex = dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
+    if (!Number.isNaN(fromIndex)) {
+      commitDragDrop(fromIndex, dragOverIndex);
+    }
+    setDragFromIndex(null);
+    setDragOverIndex(null);
+  }
+
   return (
-    <article className="pane">
+    <article
+      className="pane"
+      onDrop={handleDrop}
+      onDragOver={(event) => {
+        if (dragFromIndex === null) {
+          return;
+        }
+        event.preventDefault();
+      }}
+    >
       <header className="pane-header">
         <div className="pane-title">
           <strong>{game.name}</strong>
@@ -107,19 +136,6 @@ export function PredictionPane({
                     event.preventDefault();
                     setDragOverIndex(index);
                   }}
-                  onDrop={(event) => {
-                    if (dragFromIndex === null) {
-                      return;
-                    }
-                    event.preventDefault();
-                    const fromIndex =
-                      dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
-                    if (!Number.isNaN(fromIndex) && fromIndex !== index) {
-                      onMoveCompetitor(prediction.id, fromIndex, index);
-                    }
-                    setDragFromIndex(null);
-                    setDragOverIndex(null);
-                  }}
                 />
                 <li
                   className="competitor-row"
@@ -134,24 +150,6 @@ export function PredictionPane({
                       return;
                     }
                     event.preventDefault();
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    const nextIndex =
-                      event.clientY < rect.top + rect.height / 2 ? index : index + 1;
-                    setDragOverIndex(nextIndex);
-                  }}
-                  onDrop={(event) => {
-                    if (dragFromIndex === null) {
-                      return;
-                    }
-                    event.preventDefault();
-                    const fromIndex =
-                      dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
-                    const toIndex = dragOverIndex ?? index;
-                    if (!Number.isNaN(fromIndex) && fromIndex !== toIndex) {
-                      onMoveCompetitor(prediction.id, fromIndex, toIndex);
-                    }
-                    setDragFromIndex(null);
-                    setDragOverIndex(null);
                   }}
                   onDragEnd={() => {
                     setDragFromIndex(null);
@@ -205,22 +203,6 @@ export function PredictionPane({
               }
               event.preventDefault();
               setDragOverIndex(prediction.competitorIds.length);
-            }}
-            onDrop={(event) => {
-              if (dragFromIndex === null) {
-                return;
-              }
-              event.preventDefault();
-              const fromIndex =
-                dragFromIndex ?? Number(event.dataTransfer.getData("text/plain"));
-              if (
-                !Number.isNaN(fromIndex) &&
-                fromIndex !== prediction.competitorIds.length
-              ) {
-                onMoveCompetitor(prediction.id, fromIndex, prediction.competitorIds.length);
-              }
-              setDragFromIndex(null);
-              setDragOverIndex(null);
             }}
           />
         </ol>
