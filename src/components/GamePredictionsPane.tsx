@@ -1,8 +1,10 @@
+import { useState } from "react";
 import type { Game, Prediction } from "../predictionModel.js";
 
 interface GamePredictionsPaneProps {
   game: Game;
   predictions: Prediction[];
+  currentUserId: string | null;
   canShowPredictions: boolean;
   isLoading: boolean;
   canCreatePrediction: boolean;
@@ -23,6 +25,7 @@ function predictionLabel(prediction: Prediction): string {
 export function GamePredictionsPane({
   game,
   predictions,
+  currentUserId,
   canShowPredictions,
   isLoading,
   canCreatePrediction,
@@ -31,7 +34,11 @@ export function GamePredictionsPane({
   onClosePane,
   paneCount
 }: GamePredictionsPaneProps) {
-  const sorted = [...predictions].sort((a, b) => {
+  const [onlyMyPredictions, setOnlyMyPredictions] = useState(false);
+  const visiblePredictions = onlyMyPredictions
+    ? predictions.filter((prediction) => prediction.ownerUserId === currentUserId)
+    : predictions;
+  const sorted = [...visiblePredictions].sort((a, b) => {
     const left = a.updatedAt ?? a.createdAt;
     const right = b.updatedAt ?? b.createdAt;
     return right.localeCompare(left);
@@ -66,28 +73,44 @@ export function GamePredictionsPane({
           <p className="empty-state">Sign in to view predictions.</p>
         ) : isLoading ? (
           <p className="empty-state">Loading predictions...</p>
-        ) : sorted.length === 0 ? (
-          <p className="empty-state">No predictions yet.</p>
         ) : (
           <>
             <p className="pane-meta">
               Competition entries can be edited until the closing time.
             </p>
-            <ul className="prediction-list">
-              {sorted.map((prediction) => (
-                <li key={prediction.id} className="prediction-row">
-                  <button type="button" onClick={() => onOpenPrediction(prediction.id)}>
-                    <div className="prediction-copy">
-                      <strong>{predictionLabel(prediction)}</strong>
-                      <span>{prediction.ownerDisplayName ?? "Anonymous"}</span>
-                    </div>
-                    <span className="prediction-meta">
-                      {prediction.type === "competition" ? "Competition" : "Fun"}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {currentUserId && (
+              <label className="pane-filter-toggle">
+                <input
+                  type="checkbox"
+                  checked={onlyMyPredictions}
+                  onChange={(event) => setOnlyMyPredictions(event.target.checked)}
+                />
+                Only my predictions
+              </label>
+            )}
+            {sorted.length === 0 ? (
+              <p className="empty-state">
+                {onlyMyPredictions
+                  ? "No predictions found for your account."
+                  : "No predictions yet."}
+              </p>
+            ) : (
+              <ul className="prediction-list">
+                {sorted.map((prediction) => (
+                  <li key={prediction.id} className="prediction-row">
+                    <button type="button" onClick={() => onOpenPrediction(prediction.id)}>
+                      <div className="prediction-copy">
+                        <strong>{predictionLabel(prediction)}</strong>
+                        <span>{prediction.ownerDisplayName ?? "Anonymous"}</span>
+                      </div>
+                      <span className="prediction-meta">
+                        {prediction.type === "competition" ? "Competition" : "Fun"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </div>

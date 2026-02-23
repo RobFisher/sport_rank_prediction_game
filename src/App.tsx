@@ -1120,6 +1120,7 @@ export function App() {
                 key={pane.id}
                 game={game}
                 predictions={gamePredictions}
+                currentUserId={backendSessionUser?.userId ?? null}
                 canShowPredictions={googleConnected}
                 isLoading={isLoading}
                 canCreatePrediction={googleConnected}
