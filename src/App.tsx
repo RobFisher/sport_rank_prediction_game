@@ -1168,7 +1168,11 @@ export function App() {
                 onSavePrediction={(id) => setSaveDialogPredictionId(id)}
                 onDeletePrediction={ownsPrediction ? handleDeletePrediction : undefined}
                 onRemovePane={handleRemovePane}
-                saveDisabled={!googleConnected || isCompetitionClosed || !hasUnsavedChanges}
+                saveDisabled={
+                  !googleConnected ||
+                  isCompetitionClosed ||
+                  (ownsPrediction && !hasUnsavedChanges)
+                }
                 saveLabel={isCompetitionClosed ? "Locked" : saveLabel}
                 deleteDisabled={isCompetitionClosed}
                 hasUnsavedChanges={hasUnsavedChanges}
