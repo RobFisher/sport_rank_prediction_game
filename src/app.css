@@ -155,6 +155,10 @@ body {
   min-width: 0;
 }
 
+.pane-dirty {
+  background: #fff2f2;
+}
+
 .pane-header {
   display: flex;
   gap: 8px;
@@ -405,6 +409,12 @@ body {
   padding: 8px 10px;
   background: #f7f9fc;
   font-weight: 600;
+}
+
+.pane-export:disabled {
+  background: #eef2f8;
+  color: #7a879b;
+  cursor: not-allowed;
 }
 
 .song-list {

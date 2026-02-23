@@ -198,6 +198,26 @@ function mergePredictions(existing: Prediction[], incoming: Prediction[]): Predi
   return [...byId.values()];
 }
 
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isPredictionSynced(current: Prediction, persisted: Prediction): boolean {
+  return (
+    current.type === persisted.type &&
+    current.name === persisted.name &&
+    areStringArraysEqual(current.competitorIds, persisted.competitorIds)
+  );
+}
+
 type PaneDescriptor =
   | { id: string; type: "games" }
   | { id: string; type: "game-predictions"; gameId: string }
@@ -207,6 +227,9 @@ export function App() {
   const [competitorLists, setCompetitorLists] = useState<CompetitorList[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [persistedPredictionsById, setPersistedPredictionsById] = useState<
+    Map<string, Prediction>
+  >(new Map());
   const [panes, setPanes] = useState<PaneDescriptor[]>([
     { id: "games-pane", type: "games" }
   ]);
@@ -246,6 +269,20 @@ export function App() {
   const predictionsById = useMemo(() => {
     return new Map(predictions.map((prediction) => [prediction.id, prediction]));
   }, [predictions]);
+
+  const dirtyPredictionIds = useMemo(() => {
+    const dirty = new Set<string>();
+    predictions.forEach((prediction) => {
+      const persisted = persistedPredictionsById.get(prediction.id);
+      if (!persisted) {
+        return;
+      }
+      if (!isPredictionSynced(prediction, persisted)) {
+        dirty.add(prediction.id);
+      }
+    });
+    return dirty;
+  }, [persistedPredictionsById, predictions]);
 
   const predictionsByGameId = useMemo(() => {
     const map = new Map<string, Prediction[]>();
@@ -332,6 +369,7 @@ export function App() {
   const loadPredictionsForGames = async (gamesToLoad: Game[]) => {
     if (!backendSessionUser || gamesToLoad.length === 0) {
       setPredictions([]);
+      setPersistedPredictionsById(new Map());
       setPredictionsLoaded(false);
       return;
     }
@@ -343,7 +381,11 @@ export function App() {
           return predictionsForGame.map(toUiPrediction);
         })
       );
-      setPredictions(mergePredictions([], batches.flat()));
+      const loadedPredictions = batches.flat();
+      setPredictions(mergePredictions([], loadedPredictions));
+      setPersistedPredictionsById(
+        new Map(loadedPredictions.map((prediction) => [prediction.id, prediction]))
+      );
       setPredictionsLoaded(true);
     } catch (error) {
       setStatusMessage(
@@ -366,7 +408,9 @@ export function App() {
     }
     try {
       const loaded = await listPredictionsForGame(gameId);
-      setPredictions((current) => mergePredictions(current, loaded.map(toUiPrediction)));
+      const uiPredictions = loaded.map(toUiPrediction);
+      setPredictions((current) => mergePredictions(current, uiPredictions));
+      mergePersistedPredictions(uiPredictions);
     } catch (error) {
       setStatusMessage(
         error instanceof Error
@@ -410,12 +454,36 @@ export function App() {
   useEffect(() => {
     if (!backendSessionUser) {
       setPredictions([]);
+      setPersistedPredictionsById(new Map());
       setPredictionsLoaded(false);
       setPredictionsLoading(false);
       return;
     }
     void loadPredictionsForGames(games);
   }, [backendSessionUser, games]);
+
+  const mergePersistedPredictions = (incoming: Prediction[]) => {
+    setPersistedPredictionsById((current) => {
+      const next = new Map(current);
+      incoming.forEach((prediction) => {
+        next.set(prediction.id, prediction);
+      });
+      return next;
+    });
+  };
+
+  const removePersistedPredictions = (predictionIds: Set<string>) => {
+    if (predictionIds.size === 0) {
+      return;
+    }
+    setPersistedPredictionsById((current) => {
+      const next = new Map(current);
+      predictionIds.forEach((predictionId) => {
+        next.delete(predictionId);
+      });
+      return next;
+    });
+  };
 
   async function establishBackendSession(
     accessToken: string,
@@ -621,6 +689,7 @@ export function App() {
       });
       const uiPrediction = toUiPrediction(created);
       setPredictions((current) => mergePredictions(current, [uiPrediction]));
+      mergePersistedPredictions([uiPrediction]);
       setPanes((current) => {
         if (
           current.some(
@@ -724,6 +793,7 @@ export function App() {
             setPredictions((current) =>
               mergePredictions(current, [toUiPrediction(updated)])
             );
+            mergePersistedPredictions([toUiPrediction(updated)]);
             setSaveDialogPredictionId(null);
             setStatusMessage(`Overwrote "${trimmedName}".`);
             return;
@@ -745,6 +815,7 @@ export function App() {
           setPredictions((current) =>
             mergePredictions(current, [toUiPrediction(updated)])
           );
+          mergePersistedPredictions([toUiPrediction(updated)]);
           setSaveDialogPredictionId(null);
           setStatusMessage("Prediction saved.");
           return;
@@ -759,6 +830,7 @@ export function App() {
         });
         const uiPrediction = toUiPrediction(created);
         setPredictions((current) => mergePredictions(current, [uiPrediction]));
+        mergePersistedPredictions([uiPrediction]);
         setPanes((current) => [
           ...current,
           {
@@ -802,7 +874,9 @@ export function App() {
     if (!predictionsById.has(predictionId)) {
       try {
         const loaded = await getPrediction(predictionId);
-        setPredictions((current) => mergePredictions(current, [toUiPrediction(loaded)]));
+        const uiPrediction = toUiPrediction(loaded);
+        setPredictions((current) => mergePredictions(current, [uiPrediction]));
+        mergePersistedPredictions([uiPrediction]);
       } catch (error) {
         setStatusMessage(
           error instanceof Error
@@ -824,6 +898,33 @@ export function App() {
   };
 
   const handleRemovePane = (paneIndex: number) => {
+    const pane = panes[paneIndex];
+    if (!pane) {
+      return;
+    }
+    if (pane.type !== "prediction") {
+      setPanes((current) => current.filter((_, index) => index !== paneIndex));
+      return;
+    }
+    const prediction = predictionsById.get(pane.predictionId);
+    const hasUnsavedChanges =
+      prediction && dirtyPredictionIds.has(prediction.id);
+    if (!hasUnsavedChanges) {
+      setPanes((current) => current.filter((_, index) => index !== paneIndex));
+      return;
+    }
+    const discardConfirmed = window.confirm(
+      "This prediction has unsaved changes. Discard changes and close the pane?"
+    );
+    if (!discardConfirmed) {
+      return;
+    }
+    const persisted = prediction
+      ? persistedPredictionsById.get(prediction.id)
+      : null;
+    if (prediction && persisted) {
+      setPredictions((current) => mergePredictions(current, [persisted]));
+    }
     setPanes((current) => current.filter((_, index) => index !== paneIndex));
   };
 
@@ -858,6 +959,7 @@ export function App() {
       setPredictions((current) =>
         current.filter((entry) => entry.id !== predictionId)
       );
+      removePersistedPredictions(new Set([predictionId]));
       setPanes((current) =>
         current.filter(
           (pane) =>
@@ -889,6 +991,7 @@ export function App() {
         predictions.filter((entry) => entry.gameId === game.id).map((entry) => entry.id)
       );
       setPredictions((current) => current.filter((entry) => entry.gameId !== game.id));
+      removePersistedPredictions(removedIds);
       setPanes((current) =>
         current.filter((pane) => {
           if (pane.type === "game-predictions" && pane.gameId === game.id) {
@@ -1038,6 +1141,7 @@ export function App() {
               return null;
             }
             const saveLabel = ownsPrediction ? "Save" : "Save As";
+            const hasUnsavedChanges = dirtyPredictionIds.has(prediction.id);
 
             return (
               <PredictionPane
@@ -1051,9 +1155,10 @@ export function App() {
                 onSavePrediction={(id) => setSaveDialogPredictionId(id)}
                 onDeletePrediction={ownsPrediction ? handleDeletePrediction : undefined}
                 onRemovePane={handleRemovePane}
-                saveDisabled={!googleConnected || isCompetitionClosed}
+                saveDisabled={!googleConnected || isCompetitionClosed || !hasUnsavedChanges}
                 saveLabel={isCompetitionClosed ? "Locked" : saveLabel}
                 deleteDisabled={isCompetitionClosed}
+                hasUnsavedChanges={hasUnsavedChanges}
               />
             );
           }

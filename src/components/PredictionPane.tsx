@@ -14,6 +14,7 @@ interface PredictionPaneProps {
   saveDisabled?: boolean;
   saveLabel?: string;
   deleteDisabled?: boolean;
+  hasUnsavedChanges?: boolean;
 }
 
 export function PredictionPane({
@@ -28,7 +29,8 @@ export function PredictionPane({
   onRemovePane,
   saveDisabled,
   saveLabel,
-  deleteDisabled
+  deleteDisabled,
+  hasUnsavedChanges
 }: PredictionPaneProps) {
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -51,7 +53,7 @@ export function PredictionPane({
     }
   }
 
-  function handleDrop(event: React.DragEvent<HTMLOListElement>): void {
+  function handleDrop(event: React.DragEvent<HTMLElement>): void {
     if (dragFromIndex === null || dragOverIndex === null) {
       return;
     }
@@ -66,7 +68,7 @@ export function PredictionPane({
 
   return (
     <article
-      className="pane"
+      className={`pane ${hasUnsavedChanges ? "pane-dirty" : ""}`}
       onDrop={handleDrop}
       onDragOver={(event) => {
         if (dragFromIndex === null) {
