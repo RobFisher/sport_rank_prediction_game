@@ -6,7 +6,8 @@ interface NewPredictionDialogProps {
   games: Game[];
   initialGameId?: string | null;
   hasCompetitionForGame: (gameId: string) => boolean;
-  onCreate: (gameId: string, type: PredictionType) => void;
+  isFunNameAvailable: (gameId: string, name: string) => boolean;
+  onCreate: (gameId: string, type: PredictionType, name: string) => void;
   onClose: () => void;
 }
 
@@ -15,12 +16,14 @@ export function NewPredictionDialog({
   games,
   initialGameId,
   hasCompetitionForGame,
+  isFunNameAvailable,
   onCreate,
   onClose
 }: NewPredictionDialogProps) {
   const gameOptions = useMemo(() => games, [games]);
   const [gameId, setGameId] = useState(gameOptions[0]?.id ?? "");
   const [type, setType] = useState<PredictionType>("fun");
+  const [funName, setFunName] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -30,6 +33,7 @@ export function NewPredictionDialog({
           : gameOptions[0]?.id ?? "";
       setGameId(preferred);
       setType("fun");
+      setFunName("");
     }
   }, [open, gameOptions, initialGameId]);
 
@@ -54,7 +58,15 @@ export function NewPredictionDialog({
   const competitionClosed = Number.isFinite(closesAtMs) && closesAtMs <= Date.now();
   const hasCompetition = gameId.length > 0 && hasCompetitionForGame(gameId);
   const competitionDisabled = hasCompetition || competitionClosed;
-  const canCreate = gameId.length > 0 && (type !== "competition" || !competitionDisabled);
+  const trimmedFunName = funName.trim();
+  const funNameTaken =
+    type === "fun" &&
+    trimmedFunName.length > 0 &&
+    !isFunNameAvailable(gameId, trimmedFunName);
+  const canCreate =
+    gameId.length > 0 &&
+    (type !== "competition" || !competitionDisabled) &&
+    (type !== "fun" || (trimmedFunName.length > 0 && !funNameTaken));
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -65,7 +77,7 @@ export function NewPredictionDialog({
           if (!canCreate) {
             return;
           }
-          onCreate(gameId, type);
+          onCreate(gameId, type, trimmedFunName);
         }}
       >
         <h2>New prediction</h2>
@@ -92,6 +104,20 @@ export function NewPredictionDialog({
             <option value="fun">Fun</option>
           </select>
         </label>
+        {type === "fun" && (
+          <label>
+            Fun prediction name
+            <input
+              type="text"
+              value={funName}
+              onChange={(event) => setFunName(event.target.value)}
+              placeholder="Enter a unique name"
+            />
+          </label>
+        )}
+        {type === "fun" && funNameTaken && (
+          <p className="status-error">You already have a fun prediction with this name.</p>
+        )}
         <p className="modal-support">
           This creates a prediction entry and opens it in a new pane.
         </p>

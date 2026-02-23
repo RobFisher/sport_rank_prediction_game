@@ -703,7 +703,11 @@ export function App() {
     );
   };
 
-  const handleCreatePrediction = async (gameId: string, type: PredictionType) => {
+  const handleCreatePrediction = async (
+    gameId: string,
+    type: PredictionType,
+    name: string
+  ) => {
     const game = gamesById.get(gameId);
     if (!game) {
       return;
@@ -712,9 +716,34 @@ export function App() {
     if (!competitorList) {
       return;
     }
+    const trimmedName = name.trim();
+    if (type === "fun") {
+      if (!trimmedName) {
+        setStatusMessage("Fun predictions need a name.");
+        return;
+      }
+      const normalized = normalizePredictionName(trimmedName);
+      const hasSameName = predictions.some(
+        (prediction) =>
+          prediction.gameId === gameId &&
+          prediction.type === "fun" &&
+          prediction.ownerUserId === backendSessionUser?.userId &&
+          normalizePredictionName(prediction.name) === normalized
+      );
+      if (hasSameName) {
+        setStatusMessage(`You already have a fun prediction named "${trimmedName}".`);
+        return;
+      }
+    }
 
     const predictionId = createPredictionId();
-    const draft = createPredictionFromGame(predictionId, game, competitorList, type, "");
+    const draft = createPredictionFromGame(
+      predictionId,
+      game,
+      competitorList,
+      type,
+      type === "fun" ? trimmedName : ""
+    );
 
     try {
       const created = await createPrediction({
@@ -747,7 +776,11 @@ export function App() {
       });
       setNewPredictionDialogOpen(false);
       setNewPredictionGameId(null);
-      setStatusMessage(`Created ${type} prediction for "${game.name}".`);
+      setStatusMessage(
+        type === "fun"
+          ? `Created fun prediction "${trimmedName}" for "${game.name}".`
+          : `Created competition prediction for "${game.name}".`
+      );
     } catch (error) {
       setStatusMessage(
         error instanceof Error ? error.message : "Failed to create prediction."
@@ -1147,6 +1180,20 @@ export function App() {
     return competitionEntryByGameId.get(gameId) ?? false;
   };
 
+  const isNewFunNameAvailable = (gameId: string, candidateName: string) => {
+    if (!backendSessionUser) {
+      return true;
+    }
+    const normalized = normalizePredictionName(candidateName);
+    return !predictions.some(
+      (prediction) =>
+        prediction.gameId === gameId &&
+        prediction.type === "fun" &&
+        prediction.ownerUserId === backendSessionUser.userId &&
+        normalizePredictionName(prediction.name) === normalized
+    );
+  };
+
   const isOwnPrediction = (prediction: Prediction) =>
     Boolean(backendSessionUser && prediction.ownerUserId === backendSessionUser.userId);
 
@@ -1284,6 +1331,7 @@ export function App() {
         games={games}
         initialGameId={newPredictionGameId}
         hasCompetitionForGame={hasCompetitionForGame}
+        isFunNameAvailable={isNewFunNameAvailable}
         onCreate={handleCreatePrediction}
         onClose={() => {
           setNewPredictionDialogOpen(false);
