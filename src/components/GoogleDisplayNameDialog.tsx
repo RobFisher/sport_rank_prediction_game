@@ -4,7 +4,7 @@ interface GoogleDisplayNameDialogProps {
   displayName: string;
   onDisplayNameChange: (value: string) => void;
   onSave: () => void;
-  onCancel: () => void;
+  saveDisabled?: boolean;
 }
 
 export function GoogleDisplayNameDialog({
@@ -13,7 +13,7 @@ export function GoogleDisplayNameDialog({
   displayName,
   onDisplayNameChange,
   onSave,
-  onCancel
+  saveDisabled
 }: GoogleDisplayNameDialogProps) {
   if (!isOpen) {
     return null;
@@ -26,6 +26,9 @@ export function GoogleDisplayNameDialog({
         <p className="modal-support">
           Signed in as <strong>{email}</strong>. This display name is visible to other users
           when they browse games and predictions, and it cannot currently be changed.
+        </p>
+        <p className="modal-support">
+          Enter a unique display name to continue.
         </p>
         <label>
           Display name
@@ -41,10 +44,11 @@ export function GoogleDisplayNameDialog({
           />
         </label>
         <div className="modal-actions">
-          <button className="modal-cancel" onClick={onCancel}>
-            Disconnect
-          </button>
-          <button className="modal-create" onClick={onSave} disabled={!displayName.trim()}>
+          <button
+            className="modal-create"
+            onClick={onSave}
+            disabled={saveDisabled ?? !displayName.trim()}
+          >
             Save
           </button>
         </div>

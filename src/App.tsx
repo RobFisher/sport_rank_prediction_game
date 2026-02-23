@@ -40,8 +40,6 @@ import { RulesDialog } from "./components/RulesDialog.js";
 import { DeleteGameDialog } from "./components/DeleteGameDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
-const GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY = "sport_rank_display_name_by_user_id";
-
 function createPredictionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `prediction-${crypto.randomUUID()}`;
@@ -153,21 +151,6 @@ function parseCompetitorListPayload(payload: unknown): CompetitorList[] {
   });
 }
 
-function parseDisplayNameMap(raw: string | null): Record<string, string> {
-  if (!raw) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.entries(parsed)
-        .map(([userId, name]) => [userId, typeof name === "string" ? name : ""])
-        .filter(([userId, name]) => userId.trim().length > 0 && name.trim().length > 0)
-    );
-  } catch {
-    return {};
-  }
-}
 
 function toUiCompetitorList(list: BackendCompetitorList): CompetitorList {
   return {
@@ -234,9 +217,6 @@ export function App() {
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
   const [deleteGameTargetId, setDeleteGameTargetId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Loading data from backend...");
-  const [googleDisplayNameByUserId, setGoogleDisplayNameByUserId] = useState<
-    Record<string, string>
-  >(() => parseDisplayNameMap(localStorage.getItem(GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY)));
   const [googleDisplayNameDraft, setGoogleDisplayNameDraft] = useState("");
   const [googleDisplayNameDialogOpen, setGoogleDisplayNameDialogOpen] = useState(false);
   const [backendStatus, setBackendStatus] = useState<string | null>(null);
@@ -284,28 +264,24 @@ export function App() {
     : null;
 
   useEffect(() => {
-    localStorage.setItem(
-      GOOGLE_DISPLAY_NAME_BY_USER_ID_KEY,
-      JSON.stringify(googleDisplayNameByUserId)
-    );
-  }, [googleDisplayNameByUserId]);
-
-  useEffect(() => {
     if (!googleUser) {
       setGoogleDisplayNameDialogOpen(false);
       setGoogleDisplayNameDraft("");
       return;
     }
 
-    const existingDisplayName = googleDisplayNameByUserId[googleUser.sub];
-    if (existingDisplayName) {
+    const backendDisplayName =
+      backendSessionUser && backendSessionUser.userId === googleUser.sub
+        ? backendSessionUser.displayName
+        : "";
+    if (backendDisplayName) {
       setGoogleDisplayNameDialogOpen(false);
       return;
     }
 
-    setGoogleDisplayNameDraft(normalizeDisplayName(googleUser.name) || googleUser.email);
+    setGoogleDisplayNameDraft("");
     setGoogleDisplayNameDialogOpen(true);
-  }, [googleDisplayNameByUserId, googleUser]);
+  }, [backendSessionUser, googleUser]);
 
   async function refreshBackendSessionStatus(): Promise<BackendSessionUser | null> {
     try {
@@ -443,27 +419,33 @@ export function App() {
 
   async function establishBackendSession(
     accessToken: string,
-    fallbackUserId: string,
-    fallbackEmail: string,
-    fallbackName: string
-  ): Promise<void> {
-    const preferredDisplayName =
-      googleDisplayNameByUserId[fallbackUserId] ??
-      (normalizeDisplayName(fallbackName) || fallbackEmail);
+    displayNameOverride?: string
+  ): Promise<{ ok: boolean; needsDisplayName: boolean }> {
+    const preferredDisplayName = normalizeDisplayName(displayNameOverride ?? "");
     try {
-      const me = await createBackendGoogleSession(accessToken, preferredDisplayName);
+      const me = await createBackendGoogleSession(
+        accessToken,
+        preferredDisplayName || undefined
+      );
       if (me.authenticated && me.user) {
         setBackendSessionUser(me.user);
         setBackendStatus(`Backend session active for ${me.user.displayName}.`);
+        return { ok: true, needsDisplayName: false };
       } else {
         await refreshBackendSessionStatus();
+        return { ok: false, needsDisplayName: false };
       }
     } catch (error) {
-      setBackendStatus(
+      const message =
         error instanceof Error
           ? error.message
-          : "Failed to establish backend session after Google login."
-      );
+          : "Failed to establish backend session after Google login.";
+      if (message.includes("Display name is required")) {
+        return { ok: false, needsDisplayName: true };
+      }
+      setBackendStatus(message);
+      setStatusMessage(message);
+      return { ok: false, needsDisplayName: false };
     }
   }
 
@@ -483,17 +465,11 @@ export function App() {
       if (!result) {
         return;
       }
-      const existingDisplayName = googleDisplayNameByUserId[result.user.sub];
-      if (!existingDisplayName) {
-        setGoogleDisplayNameDraft(normalizeDisplayName(result.user.name) || result.user.email);
+      const sessionResult = await establishBackendSession(result.accessToken);
+      if (sessionResult.needsDisplayName) {
+        setGoogleDisplayNameDraft("");
         setGoogleDisplayNameDialogOpen(true);
       }
-      await establishBackendSession(
-        result.accessToken,
-        result.user.sub,
-        result.user.email,
-        result.user.name
-      );
     })();
   }
 
@@ -505,28 +481,19 @@ export function App() {
     if (!normalizedDisplayName) {
       return;
     }
-    setGoogleDisplayNameByUserId((prev) => ({
-      ...prev,
-      [googleUser.sub]: normalizedDisplayName
-    }));
-    setGoogleDisplayNameDialogOpen(false);
     if (googleToken) {
-      void establishBackendSession(
-        googleToken,
-        googleUser.sub,
-        googleUser.email,
-        normalizedDisplayName
-      );
+      void (async () => {
+        const sessionResult = await establishBackendSession(
+          googleToken,
+          normalizedDisplayName
+        );
+        if (sessionResult.ok) {
+          setGoogleDisplayNameDialogOpen(false);
+        } else {
+          setGoogleDisplayNameDialogOpen(true);
+        }
+      })();
     }
-  }
-
-  function cancelGoogleDisplayNameSetup(): void {
-    setGoogleDisplayNameDialogOpen(false);
-    void (async () => {
-      await logoutBackendSession();
-      await disconnectGoogle();
-      setBackendSessionUser(null);
-    })();
   }
 
   const handleUploadCompetitors = () => {
@@ -1147,7 +1114,7 @@ export function App() {
         displayName={googleDisplayNameDraft}
         onDisplayNameChange={setGoogleDisplayNameDraft}
         onSave={saveGoogleDisplayName}
-        onCancel={cancelGoogleDisplayNameSetup}
+        saveDisabled={!googleDisplayNameDraft.trim()}
       />
       <input
         ref={competitorListInputRef}

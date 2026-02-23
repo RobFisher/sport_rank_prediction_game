@@ -120,6 +120,11 @@ export class BackendStack extends Stack {
       integration
     });
     api.addRoutes({
+      path: "/api/admin/backfill-display-names",
+      methods: [HttpMethod.POST],
+      integration
+    });
+    api.addRoutes({
       path: "/api/projects",
       methods: [HttpMethod.GET, HttpMethod.POST],
       integration

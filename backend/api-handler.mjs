@@ -20,6 +20,8 @@ const ADMIN_LOCK_PK = "ADMIN#LOCK";
 const ADMIN_LOCK_SK = "LOCK";
 const USER_PK_PREFIX = "USER#";
 const USER_SK_PROFILE = "PROFILE";
+const USER_DISPLAY_NAME_PK_PREFIX = "USER_DISPLAY_NAME#";
+const USER_DISPLAY_NAME_SK_LOCK = "LOCK";
 const SESSION_PK_PREFIX = "SESSION#";
 const SESSION_SK_META = "META";
 const SESSION_COOKIE_NAME = "sport_rank_session";
@@ -31,6 +33,8 @@ const inMemoryGamesById = new Map();
 const inMemoryPredictionsById = new Map();
 const inMemoryCompetitionLockByGameUser = new Map();
 let inMemoryAdminLockUserId = null;
+const inMemoryDisplayNameLockByKey = new Map();
+const inMemoryUserIdByEmail = new Map();
 const inMemoryUsersById = new Map();
 const inMemorySessionsById = new Map();
 
@@ -212,6 +216,30 @@ function parsePredictionUpdateInput(payload) {
 
 function toProjectNameKey(projectName) {
   return normalizeProjectName(projectName).toLowerCase();
+}
+
+function toDisplayNameKey(displayName) {
+  return normalizeDisplayName(displayName).toLowerCase();
+}
+
+async function findUserByEmail(dynamodbClient, ScanCommand, tableName, email) {
+  const response = await dynamodbClient.send(
+    new ScanCommand({
+      TableName: tableName,
+      FilterExpression: "sk = :sk AND #email = :email",
+      ExpressionAttributeNames: {
+        "#email": "email"
+      },
+      ExpressionAttributeValues: {
+        ":sk": USER_SK_PROFILE,
+        ":email": email
+      },
+      ConsistentRead: true,
+      Limit: 1
+    })
+  );
+  const item = response.Items?.[0];
+  return item ?? null;
 }
 
 function parseCookies(cookieHeader) {
@@ -513,6 +541,36 @@ export async function listPredictionsForGameFromDynamoQuery(
   } while (lastEvaluatedKey);
 
   return predictions;
+}
+
+async function listUsersFromDynamoScan(dynamodbClient, ScanCommand, tableName) {
+  const users = [];
+  let exclusiveStartKey = undefined;
+
+  do {
+    const response = await dynamodbClient.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "itemType = :itemType",
+        ExpressionAttributeValues: {
+          ":itemType": "user"
+        },
+        ProjectionExpression: "userId, displayName",
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {})
+      })
+    );
+
+    for (const item of response.Items ?? []) {
+      users.push({
+        userId: String(item.userId),
+        displayName: String(item.displayName ?? "")
+      });
+    }
+
+    exclusiveStartKey = response.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  return users;
 }
 
 function createInMemoryStore() {
@@ -817,34 +875,93 @@ function createInMemoryStore() {
     },
 
     async upsertUser(googleIdentity, preferredDisplayName) {
-      const displayName =
-        normalizeDisplayName(preferredDisplayName) ||
-        normalizeDisplayName(googleIdentity.name) ||
-        googleIdentity.email;
+      const normalizedPreferred = normalizeDisplayName(preferredDisplayName);
       const existing = inMemoryUsersById.get(googleIdentity.sub);
       const existingIsAdmin = existing?.isAdmin;
       const now = new Date().toISOString();
-      let isAdmin =
-        typeof existingIsAdmin === "boolean"
-          ? existingIsAdmin
-          : false;
+      let isAdmin = typeof existingIsAdmin === "boolean" ? existingIsAdmin : false;
+      let userId = googleIdentity.sub;
       if (existingIsAdmin && !inMemoryAdminLockUserId) {
         inMemoryAdminLockUserId = googleIdentity.sub;
       }
-      if (!existing && !inMemoryAdminLockUserId) {
+      let displayName = existing?.displayName ?? "";
+      const emailMatchUserId = inMemoryUserIdByEmail.get(googleIdentity.email);
+      if (!existing && emailMatchUserId) {
+        const emailMatchUser = inMemoryUsersById.get(emailMatchUserId);
+        if (emailMatchUser) {
+          userId = emailMatchUser.userId;
+          displayName = emailMatchUser.displayName ?? "";
+          isAdmin = Boolean(emailMatchUser.isAdmin);
+        }
+      }
+      if (!existing && !emailMatchUserId && !inMemoryAdminLockUserId) {
         inMemoryAdminLockUserId = googleIdentity.sub;
         isAdmin = true;
       }
+      if (!displayName) {
+        if (!normalizedPreferred) {
+          throw new Error("Display name is required.");
+        }
+        const displayNameKey = toDisplayNameKey(normalizedPreferred);
+        const existingLock = inMemoryDisplayNameLockByKey.get(displayNameKey);
+        if (existingLock && existingLock !== googleIdentity.sub) {
+          if (!emailMatchUserId || existingLock !== emailMatchUserId) {
+            throw new Error("Display name already in use.");
+          }
+        }
+        inMemoryDisplayNameLockByKey.set(displayNameKey, userId);
+        displayName = normalizedPreferred;
+      }
       const user = {
-        userId: googleIdentity.sub,
+        userId,
         email: googleIdentity.email,
         displayName,
         isAdmin,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now
       };
-      inMemoryUsersById.set(googleIdentity.sub, user);
+      if (displayName) {
+        const displayNameKey = toDisplayNameKey(displayName);
+        const existingLock = inMemoryDisplayNameLockByKey.get(displayNameKey);
+        if (!existingLock) {
+          inMemoryDisplayNameLockByKey.set(displayNameKey, userId);
+        }
+      }
+      inMemoryUsersById.set(userId, user);
+      inMemoryUserIdByEmail.set(googleIdentity.email, userId);
       return user;
+    },
+
+    async backfillDisplayNameLocks() {
+      let created = 0;
+      let skipped = 0;
+      const conflicts = [];
+
+      for (const user of inMemoryUsersById.values()) {
+        const displayName = normalizeDisplayName(user.displayName ?? "");
+        if (!displayName) {
+          skipped += 1;
+          continue;
+        }
+        const key = toDisplayNameKey(displayName);
+        const existingLock = inMemoryDisplayNameLockByKey.get(key);
+        if (!existingLock) {
+          inMemoryDisplayNameLockByKey.set(key, user.userId);
+          created += 1;
+          continue;
+        }
+        if (existingLock !== user.userId) {
+          conflicts.push({
+            displayName,
+            userId: user.userId,
+            existingUserId: existingLock
+          });
+        } else {
+          skipped += 1;
+        }
+      }
+
+      return { created, skipped, conflicts };
     },
 
     async createSession(user, ttlSeconds) {
@@ -1654,7 +1771,22 @@ async function createDynamoStore() {
       if (typeof isAdmin !== "boolean") {
         isAdmin = false;
       }
+      const normalizedPreferred = normalizeDisplayName(preferredDisplayName);
+      let displayName = normalizeDisplayName(existing.Item?.displayName ?? "");
+      let emailMatchUser = null;
       if (!existing.Item) {
+        emailMatchUser = await findUserByEmail(
+          dynamodbClient,
+          ScanCommand,
+          tableName,
+          googleIdentity.email
+        );
+        if (emailMatchUser) {
+          displayName = normalizeDisplayName(emailMatchUser.displayName ?? "");
+          isAdmin = Boolean(emailMatchUser.isAdmin);
+        }
+      }
+      if (!existing.Item && !emailMatchUser) {
         const adminLock = await dynamodbClient.send(
           new GetCommand({
             TableName: tableName,
@@ -1721,23 +1853,124 @@ async function createDynamoStore() {
           isAdmin = true;
         }
       }
-      const displayName =
-        normalizeDisplayName(preferredDisplayName) ||
-        normalizeDisplayName(googleIdentity.name) ||
-        googleIdentity.email;
+      if (!displayName) {
+        if (!normalizedPreferred) {
+          throw new Error("Display name is required.");
+        }
+        displayName = normalizedPreferred;
+      }
+      const displayNameKey = toDisplayNameKey(displayName);
+      if (!existing.Item) {
+        if (emailMatchUser) {
+          const existingLock = await dynamodbClient.send(
+            new GetCommand({
+              TableName: tableName,
+              Key: {
+                pk: `${USER_DISPLAY_NAME_PK_PREFIX}${displayNameKey}`,
+                sk: USER_DISPLAY_NAME_SK_LOCK
+              }
+            })
+          );
+          if (existingLock.Item) {
+            if (String(existingLock.Item.userId) !== String(emailMatchUser.userId)) {
+              throw new Error("Display name already in use.");
+            }
+          } else {
+            await dynamodbClient.send(
+              new PutCommand({
+                TableName: tableName,
+                Item: {
+                  pk: `${USER_DISPLAY_NAME_PK_PREFIX}${displayNameKey}`,
+                  sk: USER_DISPLAY_NAME_SK_LOCK,
+                  itemType: "user_display_name",
+                  userId: String(emailMatchUser.userId),
+                  displayName,
+                  createdAt: now
+                },
+                ConditionExpression: "attribute_not_exists(pk)"
+              })
+            );
+          }
+        } else {
+          try {
+            await dynamodbClient.send(
+              new PutCommand({
+                TableName: tableName,
+                Item: {
+                  pk: `${USER_DISPLAY_NAME_PK_PREFIX}${displayNameKey}`,
+                  sk: USER_DISPLAY_NAME_SK_LOCK,
+                  itemType: "user_display_name",
+                  userId: googleIdentity.sub,
+                  displayName,
+                  createdAt: now
+                },
+                ConditionExpression: "attribute_not_exists(pk)"
+              })
+            );
+          } catch (error) {
+            if (error && error.name === "ConditionalCheckFailedException") {
+              throw new Error("Display name already in use.");
+            }
+            throw error;
+          }
+        }
+      } else if (displayName) {
+        const existingLock = await dynamodbClient.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              pk: `${USER_DISPLAY_NAME_PK_PREFIX}${displayNameKey}`,
+              sk: USER_DISPLAY_NAME_SK_LOCK
+            }
+          })
+        );
+        if (!existingLock.Item) {
+          try {
+            await dynamodbClient.send(
+              new PutCommand({
+                TableName: tableName,
+                Item: {
+                  pk: `${USER_DISPLAY_NAME_PK_PREFIX}${displayNameKey}`,
+                  sk: USER_DISPLAY_NAME_SK_LOCK,
+                  itemType: "user_display_name",
+                  userId: googleIdentity.sub,
+                  displayName,
+                  createdAt: now
+                },
+                ConditionExpression: "attribute_not_exists(pk)"
+              })
+            );
+          } catch (error) {
+            if (error && error.name === "ConditionalCheckFailedException") {
+              throw new Error("Display name already in use.");
+            }
+            throw error;
+          }
+        } else if (existingLock.Item.userId !== googleIdentity.sub) {
+          if (
+            emailMatchUser &&
+            String(existingLock.Item.userId) === String(emailMatchUser.userId)
+          ) {
+            // Allow same email to reuse display name from another device/session.
+          } else {
+            throw new Error("Display name already in use.");
+          }
+        }
+      }
+      const userId = emailMatchUser ? String(emailMatchUser.userId) : googleIdentity.sub;
       const user = {
-        userId: googleIdentity.sub,
+        userId,
         email: googleIdentity.email,
         displayName,
         isAdmin,
-        createdAt: existing.Item?.createdAt ?? now,
+        createdAt: existing.Item?.createdAt ?? emailMatchUser?.createdAt ?? now,
         updatedAt: now
       };
       await dynamodbClient.send(
         new PutCommand({
           TableName: tableName,
           Item: {
-            pk: `${USER_PK_PREFIX}${googleIdentity.sub}`,
+            pk: `${USER_PK_PREFIX}${userId}`,
             sk: USER_SK_PROFILE,
             itemType: "user",
             ...user
@@ -1745,6 +1978,66 @@ async function createDynamoStore() {
         })
       );
       return user;
+    },
+
+    async backfillDisplayNameLocks() {
+      const users = await listUsersFromDynamoScan(dynamodbClient, ScanCommand, tableName);
+      let created = 0;
+      let skipped = 0;
+      const conflicts = [];
+
+      for (const user of users) {
+        const displayName = normalizeDisplayName(user.displayName);
+        if (!displayName) {
+          skipped += 1;
+          continue;
+        }
+        const key = toDisplayNameKey(displayName);
+        const lockResponse = await dynamodbClient.send(
+          new GetCommand({
+            TableName: tableName,
+            Key: {
+              pk: `${USER_DISPLAY_NAME_PK_PREFIX}${key}`,
+              sk: USER_DISPLAY_NAME_SK_LOCK
+            }
+          })
+        );
+        if (!lockResponse.Item) {
+          try {
+            await dynamodbClient.send(
+              new PutCommand({
+                TableName: tableName,
+                Item: {
+                  pk: `${USER_DISPLAY_NAME_PK_PREFIX}${key}`,
+                  sk: USER_DISPLAY_NAME_SK_LOCK,
+                  itemType: "user_display_name",
+                  userId: user.userId,
+                  displayName,
+                  createdAt: new Date().toISOString()
+                },
+                ConditionExpression: "attribute_not_exists(pk)"
+              })
+            );
+            created += 1;
+          } catch (error) {
+            if (error && error.name === "ConditionalCheckFailedException") {
+              skipped += 1;
+            } else {
+              throw error;
+            }
+          }
+        } else if (lockResponse.Item.userId !== user.userId) {
+          conflicts.push({
+            displayName,
+            userId: user.userId,
+            existingUserId: String(lockResponse.Item.userId)
+          });
+        } else {
+          skipped += 1;
+        }
+      }
+
+      return { created, skipped, conflicts };
     },
 
     async createSession(user, ttlSeconds) {
@@ -2052,8 +2345,29 @@ export async function handler(event) {
           }
         );
       } catch (error) {
-        return json(401, {
-          message: error instanceof Error ? error.message : "Failed to authenticate with Google."
+        const message =
+          error instanceof Error ? error.message : "Failed to authenticate with Google.";
+        if (message === "Display name is required.") {
+          return json(400, { message });
+        }
+        if (message === "Display name already in use.") {
+          return json(409, { message });
+        }
+        return json(401, { message });
+      }
+    }
+
+    if (method === "POST" && path === "/api/admin/backfill-display-names") {
+      const unauthorized = requireAdmin(actor);
+      if (unauthorized) {
+        return unauthorized;
+      }
+      try {
+        const result = await store.backfillDisplayNameLocks();
+        return json(200, result);
+      } catch (error) {
+        return json(500, {
+          message: error instanceof Error ? error.message : "Failed to backfill display names."
         });
       }
     }
