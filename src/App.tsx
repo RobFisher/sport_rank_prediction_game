@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import "./app.css";
 import {
+  isCompetitionClosedByTime,
   type CompetitorList,
   calculatePredictionScore,
   createPredictionFromGame,
@@ -826,12 +827,10 @@ export function App() {
         setStatusMessage("Prediction game not found.");
         return;
       }
-      const closesAtMs = Date.parse(game.closesAt);
       if (
         ownsPrediction &&
         prediction.type === "competition" &&
-        Number.isFinite(closesAtMs) &&
-        closesAtMs <= Date.now()
+        isCompetitionClosedByTime(game.closesAt)
       ) {
         setSaveDialogPredictionId(null);
         setStatusMessage("Competition predictions are closed for this game.");
@@ -846,7 +845,7 @@ export function App() {
         setStatusMessage("You already have a competition prediction for this game.");
         return;
       }
-      if (Number.isFinite(closesAtMs) && closesAtMs <= Date.now()) {
+      if (isCompetitionClosedByTime(game.closesAt)) {
         setStatusMessage("Competition predictions are closed for this game.");
           return;
         }
@@ -1130,8 +1129,7 @@ export function App() {
       return;
     }
     if (prediction.type === "competition") {
-      const closesAtMs = Date.parse(game.closesAt);
-      if (Number.isFinite(closesAtMs) && closesAtMs <= Date.now()) {
+      if (isCompetitionClosedByTime(game.closesAt)) {
         setStatusMessage("Competition predictions are closed for this game.");
         return;
       }
@@ -1272,8 +1270,7 @@ export function App() {
   const activeSaveCompetitionAllowed = Boolean(
     activeSavePrediction &&
       activeSaveGame &&
-      Number.isFinite(Date.parse(activeSaveGame.closesAt)) &&
-      Date.parse(activeSaveGame.closesAt) > Date.now() &&
+      !isCompetitionClosedByTime(activeSaveGame.closesAt) &&
       (
         (isOwnPrediction(activeSavePrediction) && activeSavePrediction.type === "competition") ||
         !hasCompetitionForGame(activeSavePrediction.gameId)
@@ -1334,6 +1331,7 @@ export function App() {
                 isLoading={isLoading}
                 canCreatePrediction={googleConnected}
                 canSetResults={isAdmin}
+                canViewResults={!isAdmin && Boolean(game.results?.length)}
                 onCreatePrediction={() => {
                   setNewPredictionGameId(game.id);
                   setNewPredictionDialogOpen(true);
@@ -1364,6 +1362,7 @@ export function App() {
                 game={game}
                 competitorList={competitorList}
                 initialCompetitorIds={resolveGameResultOrder(game, competitorList)}
+                canEdit={isAdmin}
                 onSaveResults={handleSaveResults}
                 onRemovePane={handleRemovePane}
               />
@@ -1378,13 +1377,11 @@ export function App() {
             if (!game) {
               return null;
             }
-            const closesAtMs = Date.parse(game.closesAt);
             const ownsPrediction = isOwnPrediction(prediction);
             const isCompetitionClosed =
               ownsPrediction &&
               prediction.type === "competition" &&
-              Number.isFinite(closesAtMs) &&
-              closesAtMs <= Date.now();
+              isCompetitionClosedByTime(game.closesAt);
             const competitorList = competitorListsById.get(game.competitorListId);
             if (!competitorList) {
               return null;

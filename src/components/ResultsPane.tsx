@@ -7,6 +7,7 @@ interface ResultsPaneProps {
   game: Game;
   competitorList: CompetitorList;
   initialCompetitorIds: string[];
+  canEdit: boolean;
   onSaveResults: (gameId: string, competitorIds: string[]) => void;
   onRemovePane: (paneIndex: number) => void;
 }
@@ -29,6 +30,7 @@ export function ResultsPane({
   game,
   competitorList,
   initialCompetitorIds,
+  canEdit,
   onSaveResults,
   onRemovePane
 }: ResultsPaneProps) {
@@ -41,7 +43,8 @@ export function ResultsPane({
     setCompetitorIds(initialCompetitorIds);
   }, [game.id, initialSignature]);
 
-  const hasUnsavedChanges = !areStringArraysEqual(competitorIds, initialCompetitorIds);
+  const hasUnsavedChanges =
+    canEdit && !areStringArraysEqual(competitorIds, initialCompetitorIds);
   const competitorById = useMemo(
     () => new Map(competitorList.competitors.map((competitor) => [competitor.id, competitor])),
     [competitorList.competitors]
@@ -55,7 +58,7 @@ export function ResultsPane({
   }
 
   function handleDrop(event: React.DragEvent<HTMLElement>): void {
-    if (dragFromIndex === null || dragOverIndex === null) {
+    if (!canEdit || dragFromIndex === null || dragOverIndex === null) {
       return;
     }
     event.preventDefault();
@@ -72,7 +75,7 @@ export function ResultsPane({
       className={`pane ${hasUnsavedChanges ? "pane-dirty" : ""}`}
       onDrop={handleDrop}
       onDragOver={(event) => {
-        if (dragFromIndex === null) {
+        if (!canEdit || dragFromIndex === null) {
           return;
         }
         event.preventDefault();
@@ -88,13 +91,15 @@ export function ResultsPane({
             {game.results?.length ? "Saved results loaded." : "No saved results yet."}
           </span>
         </div>
-        <button
-          className="pane-export"
-          onClick={() => onSaveResults(game.id, competitorIds)}
-          disabled={!hasUnsavedChanges}
-        >
-          Save Results
-        </button>
+        {canEdit ? (
+          <button
+            className="pane-export"
+            onClick={() => onSaveResults(game.id, competitorIds)}
+            disabled={!hasUnsavedChanges}
+          >
+            Save Results
+          </button>
+        ) : null}
         <button
           className="pane-close"
           onClick={() => onRemovePane(paneIndex)}
@@ -122,7 +127,7 @@ export function ResultsPane({
                       : ""
                   }`}
                   onDragOver={(event) => {
-                    if (dragFromIndex === null) {
+                    if (!canEdit || dragFromIndex === null) {
                       return;
                     }
                     event.preventDefault();
@@ -131,14 +136,17 @@ export function ResultsPane({
                 />
                 <li
                   className="competitor-row"
-                  draggable
+                  draggable={canEdit}
                   onDragStart={(event) => {
+                    if (!canEdit) {
+                      return;
+                    }
                     event.dataTransfer.effectAllowed = "move";
                     event.dataTransfer.setData("text/plain", String(index));
                     setDragFromIndex(index);
                   }}
                   onDragOver={(event) => {
-                    if (dragFromIndex === null) {
+                    if (!canEdit || dragFromIndex === null) {
                       return;
                     }
                     event.preventDefault();
@@ -166,7 +174,7 @@ export function ResultsPane({
                       onClick={() =>
                         setCompetitorIds((current) => moveCompetitor(current, index, index - 1))
                       }
-                      disabled={index === 0}
+                      disabled={!canEdit || index === 0}
                       aria-label={`Move ${competitor.name} up`}
                       title="Move up"
                     >
@@ -176,7 +184,7 @@ export function ResultsPane({
                       onClick={() =>
                         setCompetitorIds((current) => moveCompetitor(current, index, index + 1))
                       }
-                      disabled={index === competitorIds.length - 1}
+                      disabled={!canEdit || index === competitorIds.length - 1}
                       aria-label={`Move ${competitor.name} down`}
                       title="Move down"
                     >
@@ -194,7 +202,7 @@ export function ResultsPane({
                 : ""
             }`}
             onDragOver={(event) => {
-              if (dragFromIndex === null) {
+              if (!canEdit || dragFromIndex === null) {
                 return;
               }
               event.preventDefault();

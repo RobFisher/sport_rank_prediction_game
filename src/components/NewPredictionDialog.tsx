@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Game, PredictionType } from "../predictionModel.js";
+import { isCompetitionClosedByTime, type Game, type PredictionType } from "../predictionModel.js";
 
 interface NewPredictionDialogProps {
   open: boolean;
@@ -42,8 +42,7 @@ export function NewPredictionDialog({
       return;
     }
     const selectedGame = gameOptions.find((entry) => entry.id === gameId);
-    const closesAtMs = selectedGame ? Date.parse(selectedGame.closesAt) : Number.NaN;
-    const closed = Number.isFinite(closesAtMs) && closesAtMs <= Date.now();
+    const closed = selectedGame ? isCompetitionClosedByTime(selectedGame.closesAt) : false;
     if (type === "competition" && (hasCompetitionForGame(gameId) || closed)) {
       setType("fun");
     }
@@ -54,8 +53,9 @@ export function NewPredictionDialog({
   }
 
   const selectedGame = gameOptions.find((entry) => entry.id === gameId);
-  const closesAtMs = selectedGame ? Date.parse(selectedGame.closesAt) : Number.NaN;
-  const competitionClosed = Number.isFinite(closesAtMs) && closesAtMs <= Date.now();
+  const competitionClosed = selectedGame
+    ? isCompetitionClosedByTime(selectedGame.closesAt)
+    : false;
   const hasCompetition = gameId.length > 0 && hasCompetitionForGame(gameId);
   const competitionDisabled = hasCompetition || competitionClosed;
   const trimmedFunName = funName.trim();

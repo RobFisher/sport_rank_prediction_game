@@ -173,3 +173,8 @@ export function calculatePredictionScore(
 
   return total;
 }
+
+export function isCompetitionClosedByTime(closesAt: string, nowMs = Date.now()): boolean {
+  const closesAtMs = Date.parse(closesAt);
+  return Number.isFinite(closesAtMs) && closesAtMs <= nowMs;
+}
