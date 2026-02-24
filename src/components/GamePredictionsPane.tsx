@@ -8,7 +8,9 @@ interface GamePredictionsPaneProps {
   canShowPredictions: boolean;
   isLoading: boolean;
   canCreatePrediction: boolean;
+  canSetResults: boolean;
   onCreatePrediction: () => void;
+  onSetResults: () => void;
   onOpenPrediction: (predictionId: string) => void;
   onClosePane: () => void;
   paneCount: number;
@@ -29,7 +31,9 @@ export function GamePredictionsPane({
   canShowPredictions,
   isLoading,
   canCreatePrediction,
+  canSetResults,
   onCreatePrediction,
+  onSetResults,
   onOpenPrediction,
   onClosePane,
   paneCount
@@ -56,6 +60,11 @@ export function GamePredictionsPane({
         {canCreatePrediction && (
           <button className="pane-export" onClick={onCreatePrediction}>
             New Prediction
+          </button>
+        )}
+        {canSetResults && (
+          <button className="pane-export" onClick={onSetResults}>
+            Admin: Set Results
           </button>
         )}
         <button

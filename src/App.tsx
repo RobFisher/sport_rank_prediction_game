@@ -21,6 +21,7 @@ import {
   listPredictionsForGame,
   logoutBackendSession,
   createPrediction,
+  updateGame,
   updatePrediction,
   updateCompetitorList,
   type BackendCompetitorList,
@@ -36,6 +37,7 @@ import { GoogleDisplayNameDialog } from "./components/GoogleDisplayNameDialog.js
 import { CreateGameDialog } from "./components/CreateGameDialog.js";
 import { GamesPane } from "./components/GamesPane.js";
 import { GamePredictionsPane } from "./components/GamePredictionsPane.js";
+import { ResultsPane } from "./components/ResultsPane.js";
 import { RulesDialog } from "./components/RulesDialog.js";
 import { DeleteGameDialog } from "./components/DeleteGameDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
@@ -218,9 +220,23 @@ function isPredictionSynced(current: Prediction, persisted: Prediction): boolean
   );
 }
 
+function resolveGameResultOrder(game: Game, competitorList: CompetitorList): string[] {
+  const defaultOrder = competitorList.competitors.map((competitor) => competitor.id);
+  const savedResults = game.results ?? [];
+  if (savedResults.length !== defaultOrder.length) {
+    return defaultOrder;
+  }
+  const allowedCompetitors = new Set(defaultOrder);
+  if (savedResults.some((competitorId) => !allowedCompetitors.has(competitorId))) {
+    return defaultOrder;
+  }
+  return savedResults;
+}
+
 type PaneDescriptor =
   | { id: string; type: "games" }
   | { id: string; type: "game-predictions"; gameId: string }
+  | { id: string; type: "results"; gameId: string }
   | { id: string; type: "prediction"; predictionId: string };
 
 export function App() {
@@ -950,6 +966,42 @@ export function App() {
     });
   };
 
+  const handleOpenResultsPane = async (gameId: string) => {
+    await refreshGames();
+    setPanes((current) => {
+      if (current.some((pane) => pane.type === "results" && pane.gameId === gameId)) {
+        return current;
+      }
+      return [...current, { id: createPaneId("results"), type: "results", gameId }];
+    });
+  };
+
+  const handleSaveResults = async (gameId: string, resultCompetitorIds: string[]) => {
+    if (!isAdmin) {
+      return;
+    }
+    const game = gamesById.get(gameId);
+    if (!game) {
+      return;
+    }
+    try {
+      const updated = await updateGame(gameId, {
+        name: game.name,
+        competitorListId: game.competitorListId,
+        closesAt: game.closesAt,
+        results: resultCompetitorIds
+      });
+      setGames((current) =>
+        current.map((entry) => (entry.id === gameId ? toUiGame(updated) : entry))
+      );
+      setStatusMessage(`Saved results for "${game.name}".`);
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : "Failed to save results."
+      );
+    }
+  };
+
   const handleOpenPredictionPane = async (predictionId: string) => {
     const alreadyOpen = panes.some(
       (pane) => pane.type === "prediction" && pane.predictionId === predictionId
@@ -978,6 +1030,7 @@ export function App() {
     setRefreshLoading(true);
     try {
       const hasGamesPane = panes.some((pane) => pane.type === "games");
+      const hasResultsPane = panes.some((pane) => pane.type === "results");
       const visibleGameIds = [...new Set(
         panes
           .filter((pane): pane is Extract<PaneDescriptor, { type: "game-predictions" }> => pane.type === "game-predictions")
@@ -989,7 +1042,7 @@ export function App() {
           .map((pane) => pane.predictionId)
       )];
 
-      if (hasGamesPane) {
+      if (hasGamesPane || hasResultsPane) {
         await Promise.all([refreshGames(), refreshCompetitorLists()]);
       }
       if (!backendSessionUser) {
@@ -1266,13 +1319,39 @@ export function App() {
                 canShowPredictions={googleConnected}
                 isLoading={isLoading}
                 canCreatePrediction={googleConnected}
+                canSetResults={isAdmin}
                 onCreatePrediction={() => {
                   setNewPredictionGameId(game.id);
                   setNewPredictionDialogOpen(true);
                 }}
+                onSetResults={() => {
+                  void handleOpenResultsPane(game.id);
+                }}
                 onOpenPrediction={handleOpenPredictionPane}
                 onClosePane={() => handleRemovePane(paneIndex)}
                 paneCount={panes.length}
+              />
+            );
+          }
+          if (pane.type === "results") {
+            const game = gamesById.get(pane.gameId);
+            if (!game) {
+              return null;
+            }
+            const competitorList = competitorListsById.get(game.competitorListId);
+            if (!competitorList) {
+              return null;
+            }
+            return (
+              <ResultsPane
+                key={pane.id}
+                paneIndex={paneIndex}
+                paneCount={panes.length}
+                game={game}
+                competitorList={competitorList}
+                initialCompetitorIds={resolveGameResultOrder(game, competitorList)}
+                onSaveResults={handleSaveResults}
+                onRemovePane={handleRemovePane}
               />
             );
           }
