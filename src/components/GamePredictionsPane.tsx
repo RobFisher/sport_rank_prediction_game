@@ -4,6 +4,7 @@ import type { Game, Prediction } from "../predictionModel.js";
 interface GamePredictionsPaneProps {
   game: Game;
   predictions: Prediction[];
+  scoresByPredictionId: Map<string, number | null>;
   currentUserId: string | null;
   canShowPredictions: boolean;
   isLoading: boolean;
@@ -27,6 +28,7 @@ function predictionLabel(prediction: Prediction): string {
 export function GamePredictionsPane({
   game,
   predictions,
+  scoresByPredictionId,
   currentUserId,
   canShowPredictions,
   isLoading,
@@ -105,19 +107,23 @@ export function GamePredictionsPane({
               </p>
             ) : (
               <ul className="prediction-list">
-                {sorted.map((prediction) => (
-                  <li key={prediction.id} className="prediction-row">
+                {sorted.map((prediction) => {
+                  const score = scoresByPredictionId.get(prediction.id) ?? null;
+                  const scoreLabel = score === null ? "No score" : `${score} pts`;
+                  return (
+                    <li key={prediction.id} className="prediction-row">
                     <button type="button" onClick={() => onOpenPrediction(prediction.id)}>
                       <div className="prediction-copy">
                         <strong>{predictionLabel(prediction)}</strong>
                         <span>{prediction.ownerDisplayName ?? "Anonymous"}</span>
                       </div>
                       <span className="prediction-meta">
-                        {prediction.type === "competition" ? "Competition" : "Fun"}
+                        {prediction.type === "competition" ? "Competition" : "Fun"} • {scoreLabel}
                       </span>
                     </button>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </>

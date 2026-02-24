@@ -6,6 +6,7 @@ interface PredictionPaneProps {
   paneCount: number;
   prediction: Prediction;
   game: Game;
+  score: number | null;
   competitorList: CompetitorList;
   onMoveCompetitor: (predictionId: string, fromIndex: number, toIndex: number) => void;
   onSavePrediction: (predictionId: string) => void;
@@ -22,6 +23,7 @@ export function PredictionPane({
   paneCount,
   prediction,
   game,
+  score,
   competitorList,
   onMoveCompetitor,
   onSavePrediction,
@@ -82,6 +84,9 @@ export function PredictionPane({
           <strong>{game.name}</strong>
           <span className="pane-meta">
             {title} • closes {new Date(game.closesAt).toLocaleString()}
+          </span>
+          <span className="pane-meta">
+            Score: {score === null ? "No score yet" : `${score} pts`}
           </span>
           <span className="pane-meta">{subtitle}</span>
           {ownerLabel ? (

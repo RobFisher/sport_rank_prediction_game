@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import "./app.css";
 import {
   type CompetitorList,
+  calculatePredictionScore,
   createPredictionFromGame,
   moveCompetitor,
   type Game,
@@ -1212,6 +1213,18 @@ export function App() {
     return counts;
   }, [predictions]);
 
+  const scoreByPredictionId = useMemo(() => {
+    const scores = new Map<string, number | null>();
+    predictions.forEach((prediction) => {
+      const game = gamesById.get(prediction.gameId);
+      scores.set(
+        prediction.id,
+        calculatePredictionScore(prediction.competitorIds, game?.results ?? null)
+      );
+    });
+    return scores;
+  }, [gamesById, predictions]);
+
   const competitionEntryByGameId = useMemo(() => {
     const entries = new Map<string, boolean>();
     predictions.forEach((prediction) => {
@@ -1315,6 +1328,7 @@ export function App() {
                 key={pane.id}
                 game={game}
                 predictions={gamePredictions}
+                scoresByPredictionId={scoreByPredictionId}
                 currentUserId={backendSessionUser?.userId ?? null}
                 canShowPredictions={googleConnected}
                 isLoading={isLoading}
@@ -1385,6 +1399,7 @@ export function App() {
                 paneCount={panes.length}
                 prediction={prediction}
                 game={game}
+                score={scoreByPredictionId.get(prediction.id) ?? null}
                 competitorList={competitorList}
                 onMoveCompetitor={handleMoveCompetitor}
                 onSavePrediction={(id) => setSaveDialogPredictionId(id)}

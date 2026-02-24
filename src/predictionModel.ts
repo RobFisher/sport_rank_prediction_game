@@ -147,3 +147,29 @@ export function createPredictionFromGame(
     updatedAt: createdAt
   };
 }
+
+export function calculatePredictionScore(
+  competitorIds: string[],
+  results: string[] | null | undefined
+): number | null {
+  if (!results || results.length === 0 || competitorIds.length !== results.length) {
+    return null;
+  }
+
+  const resultIndexByCompetitorId = new Map<string, number>();
+  results.forEach((competitorId, index) => {
+    resultIndexByCompetitorId.set(competitorId, index);
+  });
+
+  let total = 0;
+  for (let predictionIndex = 0; predictionIndex < competitorIds.length; predictionIndex += 1) {
+    const competitorId = competitorIds[predictionIndex];
+    const resultIndex = resultIndexByCompetitorId.get(competitorId);
+    if (resultIndex === undefined) {
+      return null;
+    }
+    total += Math.abs(predictionIndex - resultIndex);
+  }
+
+  return total;
+}
