@@ -44,10 +44,20 @@ export function GamePredictionsPane({
   const visiblePredictions = onlyMyPredictions
     ? predictions.filter((prediction) => prediction.ownerUserId === currentUserId)
     : predictions;
-  const sorted = [...visiblePredictions].sort((a, b) => {
-    const left = a.updatedAt ?? a.createdAt;
-    const right = b.updatedAt ?? b.createdAt;
-    return right.localeCompare(left);
+  const sorted = [...visiblePredictions].sort((leftPrediction, rightPrediction) => {
+    const leftScore = scoresByPredictionId.get(leftPrediction.id) ?? null;
+    const rightScore = scoresByPredictionId.get(rightPrediction.id) ?? null;
+
+    if (leftScore !== null && rightScore !== null) {
+      if (leftScore !== rightScore) {
+        return leftScore - rightScore;
+      }
+      return rightPrediction.createdAt.localeCompare(leftPrediction.createdAt);
+    }
+    if (leftScore === null && rightScore === null) {
+      return rightPrediction.createdAt.localeCompare(leftPrediction.createdAt);
+    }
+    return leftScore === null ? 1 : -1;
   });
 
   return (
@@ -109,7 +119,7 @@ export function GamePredictionsPane({
               <ul className="prediction-list">
                 {sorted.map((prediction) => {
                   const score = scoresByPredictionId.get(prediction.id) ?? null;
-                  const scoreLabel = score === null ? "No score" : `${score} pts`;
+                  const scoreLabel = score === null ? "" : ` • ${score} pts`;
                   return (
                     <li key={prediction.id} className="prediction-row">
                     <button type="button" onClick={() => onOpenPrediction(prediction.id)}>
@@ -118,7 +128,8 @@ export function GamePredictionsPane({
                         <span>{prediction.ownerDisplayName ?? "Anonymous"}</span>
                       </div>
                       <span className="prediction-meta">
-                        {prediction.type === "competition" ? "Competition" : "Fun"} • {scoreLabel}
+                        {prediction.type === "competition" ? "Competition" : "Fun"}
+                        {scoreLabel}
                       </span>
                     </button>
                     </li>
