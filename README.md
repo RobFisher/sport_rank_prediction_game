@@ -4,6 +4,8 @@ Sport Rank Prediction Game is a web app for creating and sharing ranked predicti
 sports competitions. The initial focus is Formula 1 2026, but the model supports any game
 with a list of competitors and a closing date.
 
+![Sport Rank Prediction Game screenshot](screenshot.png)
+
 ## How the game works
 
 - Admins create games and competitor lists.
