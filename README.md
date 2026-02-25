@@ -14,7 +14,9 @@ with a list of competitors and a closing date.
   plus any number of fun predictions for experimenting.
 - Scoring is lowest-score-wins: each competitor earns points equal to the difference
   between predicted and actual finishing position (0 for perfect, 1 if off by one, etc.).
-- Scores will appear once results are available (to be implemented later).
+- Scores appear once results are available.
+- An overall leaderboard is available in the UI and totals only competition scores from
+  games with results.
 
 ## Deployment strategy
 

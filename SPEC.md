@@ -46,8 +46,9 @@ The administrator will create lists of competitors. A competitor has these prope
  - number (optional)
 
 Users can create predictions. A prediction can be "fun" or "competition". A prediction
-will be for a specific game. A user can create only one "competition" prediction for a game andThe 
-can not change it afterwards. Many "fun" predictions can be created and edited for the same game.
+will be for a specific game. A user can create only one "competition" prediction for a game and
+can edit it until the game closes. Many "fun" predictions can be created and edited for the same
+game.
 
 A prediction is linked to a specific game. It includes all the competitors in the game in a specific order.
 

@@ -11,7 +11,7 @@ Guidance for AI coding agents working in this repo.
 - Store at most user email addresses (no other PII). Display name is user-chosen.
 - Competition predictions: one per user per game, editable until game closes.
 - Fun predictions: unlimited, editable; name must be unique per user/game (UI enforces).
-- Scores are lowest-score-wins once results are known (future work).
+- Scores are lowest-score-wins once results are known.
 
 ## Auth + display names
 - Google OAuth; backend sessions stored in DynamoDB.
