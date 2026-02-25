@@ -42,6 +42,7 @@ import { GamePredictionsPane } from "./components/GamePredictionsPane.js";
 import { ResultsPane } from "./components/ResultsPane.js";
 import { RulesDialog } from "./components/RulesDialog.js";
 import { DeleteGameDialog } from "./components/DeleteGameDialog.js";
+import { LeaderboardDialog } from "./components/LeaderboardDialog.js";
 import { useGoogleAuth } from "./hooks/useGoogleAuth.js";
 
 function createPredictionId(): string {
@@ -256,6 +257,7 @@ export function App() {
   const [createGameDialogOpen, setCreateGameDialogOpen] = useState(false);
   const [saveDialogPredictionId, setSaveDialogPredictionId] = useState<string | null>(null);
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
+  const [leaderboardDialogOpen, setLeaderboardDialogOpen] = useState(false);
   const [deleteGameTargetId, setDeleteGameTargetId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("Loading data from backend...");
   const [googleDisplayNameDraft, setGoogleDisplayNameDraft] = useState("");
@@ -1223,6 +1225,42 @@ export function App() {
     return scores;
   }, [gamesById, predictions]);
 
+  const overallLeaderboardRows = useMemo(() => {
+    const totalsByUserId = new Map<string, { displayName: string; totalScore: number }>();
+    predictions.forEach((prediction) => {
+      if (prediction.type !== "competition") {
+        return;
+      }
+      const score = scoreByPredictionId.get(prediction.id) ?? null;
+      if (score === null) {
+        return;
+      }
+      const userId = prediction.ownerUserId ?? "";
+      if (!userId) {
+        return;
+      }
+      const displayName =
+        prediction.ownerDisplayName?.trim() || prediction.ownerUserId || "Unknown";
+      const existing = totalsByUserId.get(userId);
+      if (!existing) {
+        totalsByUserId.set(userId, { displayName, totalScore: score });
+        return;
+      }
+      totalsByUserId.set(userId, {
+        displayName: existing.displayName,
+        totalScore: existing.totalScore + score
+      });
+    });
+    return [...totalsByUserId.entries()]
+      .map(([userId, entry]) => ({ userId, ...entry }))
+      .sort((left, right) => {
+        if (left.totalScore !== right.totalScore) {
+          return left.totalScore - right.totalScore;
+        }
+        return left.displayName.localeCompare(right.displayName);
+      });
+  }, [predictions, scoreByPredictionId]);
+
   const competitionEntryByGameId = useMemo(() => {
     const entries = new Map<string, boolean>();
     predictions.forEach((prediction) => {
@@ -1289,6 +1327,7 @@ export function App() {
         backendStatus={backendStatus}
         canUploadCompetitors={isAdmin}
         refreshLoading={refreshLoading}
+        onOpenLeaderboard={() => setLeaderboardDialogOpen(true)}
         onOpenRules={() => setRulesDialogOpen(true)}
         onToggleGoogleConnection={toggleGoogleConnection}
         onUploadCompetitors={handleUploadCompetitors}
@@ -1449,6 +1488,12 @@ export function App() {
         onClose={() => setSaveDialogPredictionId(null)}
       />
       <RulesDialog open={rulesDialogOpen} onClose={() => setRulesDialogOpen(false)} />
+      <LeaderboardDialog
+        open={leaderboardDialogOpen}
+        canShowLeaderboard={googleConnected}
+        rows={overallLeaderboardRows}
+        onClose={() => setLeaderboardDialogOpen(false)}
+      />
       <DeleteGameDialog
         open={deleteGameTargetId !== null}
         game={deleteGameTargetId ? gamesById.get(deleteGameTargetId) ?? null : null}

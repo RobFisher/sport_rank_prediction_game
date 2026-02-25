@@ -193,6 +193,12 @@ body {
   color: #314865;
 }
 
+.pane-filter-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .pane-header select {
   flex: 1;
   border: 1px solid #c8d2e2;
@@ -552,6 +558,12 @@ h1 {
   gap: 10px;
 }
 
+.modal-card-large {
+  width: min(860px, 100%);
+  max-height: min(82vh, 900px);
+  overflow: auto;
+}
+
 .modal-card h2 {
   margin: 0;
   font-size: 1.2rem;
@@ -610,6 +622,23 @@ h1 {
 
 .debug-details {
   margin-top: 4px;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #d5deea;
+}
+
+.leaderboard-table th {
+  font-size: 0.85rem;
+  color: #385071;
 }
 
 .debug-details summary {

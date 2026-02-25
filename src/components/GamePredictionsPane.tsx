@@ -43,9 +43,16 @@ export function GamePredictionsPane({
   paneCount
 }: GamePredictionsPaneProps) {
   const [onlyMyPredictions, setOnlyMyPredictions] = useState(false);
-  const visiblePredictions = onlyMyPredictions
-    ? predictions.filter((prediction) => prediction.ownerUserId === currentUserId)
-    : predictions;
+  const [onlyCompetitionPredictions, setOnlyCompetitionPredictions] = useState(false);
+  const visiblePredictions = predictions.filter((prediction) => {
+    if (onlyMyPredictions && prediction.ownerUserId !== currentUserId) {
+      return false;
+    }
+    if (onlyCompetitionPredictions && prediction.type !== "competition") {
+      return false;
+    }
+    return true;
+  });
   const sorted = [...visiblePredictions].sort((leftPrediction, rightPrediction) => {
     const leftScore = scoresByPredictionId.get(leftPrediction.id) ?? null;
     const rightScore = scoresByPredictionId.get(rightPrediction.id) ?? null;
@@ -102,14 +109,24 @@ export function GamePredictionsPane({
               Competition entries can be edited until the closing time.
             </p>
             {currentUserId && (
-              <label className="pane-filter-toggle">
-                <input
-                  type="checkbox"
-                  checked={onlyMyPredictions}
-                  onChange={(event) => setOnlyMyPredictions(event.target.checked)}
-                />
-                Only my predictions
-              </label>
+              <div className="pane-filter-row">
+                <label className="pane-filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={onlyMyPredictions}
+                    onChange={(event) => setOnlyMyPredictions(event.target.checked)}
+                  />
+                  Only my predictions
+                </label>
+                <label className="pane-filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={onlyCompetitionPredictions}
+                    onChange={(event) => setOnlyCompetitionPredictions(event.target.checked)}
+                  />
+                  Only competition predictions
+                </label>
+              </div>
             )}
             {sorted.length === 0 ? (
               <p className="empty-state">

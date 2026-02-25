@@ -8,6 +8,7 @@ interface WorkspaceHeaderProps {
   backendStatus: string | null;
   canUploadCompetitors: boolean;
   refreshLoading: boolean;
+  onOpenLeaderboard: () => void;
   onOpenRules: () => void;
   onToggleGoogleConnection: () => void;
   onUploadCompetitors: () => void;
@@ -24,6 +25,7 @@ export function WorkspaceHeader({
   backendStatus,
   canUploadCompetitors,
   refreshLoading,
+  onOpenLeaderboard,
   onOpenRules,
   onToggleGoogleConnection,
   onUploadCompetitors,
@@ -41,6 +43,7 @@ export function WorkspaceHeader({
       </div>
       <div className="workspace-actions">
         <div className="workspace-primary-actions">
+          <button onClick={onOpenLeaderboard}>Leaderboard</button>
           <button onClick={onOpenRules}>Rules</button>
           <button onClick={onRefreshVisiblePanes} disabled={refreshLoading}>
             {refreshLoading ? "Refreshing..." : "Refresh"}
