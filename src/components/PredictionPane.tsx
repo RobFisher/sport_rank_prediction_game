@@ -1,5 +1,10 @@
 import { Fragment, useState } from "react";
-import type { CompetitorList, Game, Prediction } from "../predictionModel.js";
+import {
+  calculatePredictionScoreContributions,
+  type CompetitorList,
+  type Game,
+  type Prediction
+} from "../predictionModel.js";
 
 interface PredictionPaneProps {
   paneIndex: number;
@@ -47,6 +52,13 @@ export function PredictionPane({
         : "Untitled fun prediction"
       : "Single-entry competition prediction";
   const ownerLabel = prediction.ownerDisplayName ?? prediction.ownerUserId ?? "";
+  const scoreContributions = calculatePredictionScoreContributions(
+    prediction.competitorIds,
+    game.results
+  );
+  const scoreContributionByCompetitorId = new Map(
+    (scoreContributions ?? []).map((contribution) => [contribution.competitorId, contribution])
+  );
 
   function commitDragDrop(fromIndex: number, rawToIndex: number): void {
     const adjustedToIndex = fromIndex < rawToIndex ? rawToIndex - 1 : rawToIndex;
@@ -124,6 +136,7 @@ export function PredictionPane({
         <ol className="competitor-list">
           {prediction.competitorIds.map((competitorId, index) => {
             const competitor = competitorById.get(competitorId);
+            const scoreContribution = scoreContributionByCompetitorId.get(competitorId) ?? null;
             if (!competitor) {
               return null;
             }
@@ -145,7 +158,9 @@ export function PredictionPane({
                   }}
                 />
                 <li
-                  className="competitor-row"
+                  className={`competitor-row ${
+                    scoreContribution?.direction === "exact" ? "competitor-row-exact" : ""
+                  }`}
                   draggable
                   onDragStart={(event) => {
                     event.dataTransfer.effectAllowed = "move";
@@ -176,6 +191,16 @@ export function PredictionPane({
                       {competitor.number ? `#${competitor.number}` : ""}
                     </span>
                   </div>
+                  {scoreContribution ? (
+                    <span
+                      className={`competitor-score-chip competitor-score-chip-${scoreContribution.direction}`}
+                      title={`Predicted ${scoreContribution.predictedPosition}, finished ${scoreContribution.actualPosition}`}
+                    >
+                      {scoreContribution.direction === "exact"
+                        ? "Exact"
+                        : `${scoreContribution.direction === "down" ? "↓" : "↑"} ${scoreContribution.scoreDelta}`}
+                    </span>
+                  ) : null}
                   <div className="competitor-actions">
                     <button
                       onClick={() => onMoveCompetitor(prediction.id, index, index - 1)}

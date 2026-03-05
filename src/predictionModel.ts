@@ -34,6 +34,14 @@ export interface Prediction {
   ownerDisplayName?: string;
 }
 
+export interface PredictionScoreContribution {
+  competitorId: string;
+  predictedPosition: number;
+  actualPosition: number;
+  scoreDelta: number;
+  direction: "up" | "down" | "exact";
+}
+
 export interface SeedData {
   competitorLists: CompetitorList[];
   games: Game[];
@@ -152,6 +160,18 @@ export function calculatePredictionScore(
   competitorIds: string[],
   results: string[] | null | undefined
 ): number | null {
+  const contributions = calculatePredictionScoreContributions(competitorIds, results);
+  if (!contributions) {
+    return null;
+  }
+
+  return contributions.reduce((total, contribution) => total + contribution.scoreDelta, 0);
+}
+
+export function calculatePredictionScoreContributions(
+  competitorIds: string[],
+  results: string[] | null | undefined
+): PredictionScoreContribution[] | null {
   if (!results || results.length === 0 || competitorIds.length !== results.length) {
     return null;
   }
@@ -161,17 +181,25 @@ export function calculatePredictionScore(
     resultIndexByCompetitorId.set(competitorId, index);
   });
 
-  let total = 0;
+  const contributions: PredictionScoreContribution[] = [];
   for (let predictionIndex = 0; predictionIndex < competitorIds.length; predictionIndex += 1) {
     const competitorId = competitorIds[predictionIndex];
     const resultIndex = resultIndexByCompetitorId.get(competitorId);
     if (resultIndex === undefined) {
       return null;
     }
-    total += Math.abs(predictionIndex - resultIndex);
+
+    const delta = resultIndex - predictionIndex;
+    contributions.push({
+      competitorId,
+      predictedPosition: predictionIndex + 1,
+      actualPosition: resultIndex + 1,
+      scoreDelta: Math.abs(delta),
+      direction: delta === 0 ? "exact" : delta > 0 ? "down" : "up"
+    });
   }
 
-  return total;
+  return contributions;
 }
 
 export function isCompetitionClosedByTime(closesAt: string, nowMs = Date.now()): boolean {
