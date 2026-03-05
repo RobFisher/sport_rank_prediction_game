@@ -43,7 +43,8 @@ export class BackendStack extends Stack {
       sortKey: { name: "sk", type: AttributeType.STRING },
       billingMode: BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttlEpochSeconds",
-      removalPolicy: RemovalPolicy.DESTROY
+      pointInTimeRecovery: true,
+      removalPolicy: RemovalPolicy.RETAIN
     });
 
     appTable.addGlobalSecondaryIndex({
