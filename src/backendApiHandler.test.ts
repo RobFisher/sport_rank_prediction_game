@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// @ts-expect-error backend handler is plain .mjs without TypeScript declarations
 import {
   listCompetitorListsFromDynamoScan,
   listGamesFromDynamoScan,
