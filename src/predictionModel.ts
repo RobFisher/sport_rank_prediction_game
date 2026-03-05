@@ -42,6 +42,18 @@ export interface PredictionScoreContribution {
   direction: "up" | "down" | "exact";
 }
 
+export interface LeaderboardStanding {
+  userId: string;
+  displayName: string;
+  gamesEntered: number;
+  firstPlaces: number;
+  secondPlaces: number;
+  thirdPlaces: number;
+  points: number;
+}
+
+export const F1_CHAMPIONSHIP_POINTS_BY_PLACE = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1] as const;
+
 export interface SeedData {
   competitorLists: CompetitorList[];
   games: Game[];
@@ -200,6 +212,106 @@ export function calculatePredictionScoreContributions(
   }
 
   return contributions;
+}
+
+export function calculateLeaderboardStandings(
+  predictions: Prediction[],
+  games: Game[]
+): LeaderboardStanding[] {
+  const gamesById = new Map(games.map((game) => [game.id, game]));
+  const scoredCompetitionPredictionsByGameId = new Map<
+    string,
+    Array<{ userId: string; displayName: string; score: number }>
+  >();
+
+  predictions.forEach((prediction) => {
+    if (prediction.type !== "competition") {
+      return;
+    }
+
+    const userId = prediction.ownerUserId?.trim() ?? "";
+    if (!userId) {
+      return;
+    }
+
+    const game = gamesById.get(prediction.gameId);
+    const score = calculatePredictionScore(prediction.competitorIds, game?.results ?? null);
+    if (score === null) {
+      return;
+    }
+
+    const displayName = prediction.ownerDisplayName?.trim() || prediction.ownerUserId || "Unknown";
+    const predictionsForGame = scoredCompetitionPredictionsByGameId.get(prediction.gameId) ?? [];
+    predictionsForGame.push({ userId, displayName, score });
+    scoredCompetitionPredictionsByGameId.set(prediction.gameId, predictionsForGame);
+  });
+
+  const standingsByUserId = new Map<string, LeaderboardStanding>();
+
+  scoredCompetitionPredictionsByGameId.forEach((predictionsForGame) => {
+    const sorted = [...predictionsForGame].sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+      const displayNameComparison = left.displayName.localeCompare(right.displayName);
+      if (displayNameComparison !== 0) {
+        return displayNameComparison;
+      }
+      return left.userId.localeCompare(right.userId);
+    });
+
+    let currentPlace = 0;
+    let lastScore: number | null = null;
+
+    sorted.forEach((entry) => {
+      if (lastScore !== entry.score) {
+        currentPlace += 1;
+        lastScore = entry.score;
+      }
+
+      const standing = standingsByUserId.get(entry.userId) ?? {
+        userId: entry.userId,
+        displayName: entry.displayName,
+        gamesEntered: 0,
+        firstPlaces: 0,
+        secondPlaces: 0,
+        thirdPlaces: 0,
+        points: 0
+      };
+
+      standing.gamesEntered += 1;
+      if (currentPlace === 1) {
+        standing.firstPlaces += 1;
+      }
+      if (currentPlace === 2) {
+        standing.secondPlaces += 1;
+      }
+      if (currentPlace === 3) {
+        standing.thirdPlaces += 1;
+      }
+      standing.points += F1_CHAMPIONSHIP_POINTS_BY_PLACE[currentPlace - 1] ?? 0;
+      standingsByUserId.set(entry.userId, standing);
+    });
+  });
+
+  return [...standingsByUserId.values()].sort((left, right) => {
+    if (left.points !== right.points) {
+      return right.points - left.points;
+    }
+    if (left.firstPlaces !== right.firstPlaces) {
+      return right.firstPlaces - left.firstPlaces;
+    }
+    if (left.secondPlaces !== right.secondPlaces) {
+      return right.secondPlaces - left.secondPlaces;
+    }
+    if (left.thirdPlaces !== right.thirdPlaces) {
+      return right.thirdPlaces - left.thirdPlaces;
+    }
+    if (left.gamesEntered !== right.gamesEntered) {
+      return right.gamesEntered - left.gamesEntered;
+    }
+    return left.displayName.localeCompare(right.displayName);
+  });
 }
 
 export function isCompetitionClosedByTime(closesAt: string, nowMs = Date.now()): boolean {

@@ -659,6 +659,7 @@ h1 {
 .leaderboard-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .leaderboard-table th,
@@ -671,6 +672,11 @@ h1 {
 .leaderboard-table th {
   font-size: 0.85rem;
   color: #385071;
+}
+
+.leaderboard-table th:not(:first-child),
+.leaderboard-table td:not(:first-child) {
+  text-align: center;
 }
 
 .debug-details summary {

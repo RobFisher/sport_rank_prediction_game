@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import "./app.css";
 import {
+  calculateLeaderboardStandings,
   isCompetitionClosedByTime,
   type CompetitorList,
   calculatePredictionScore,
   createPredictionFromGame,
   moveCompetitor,
   type Game,
+  type LeaderboardStanding,
   type Prediction,
   type PredictionType
 } from "./predictionModel.js";
@@ -1225,41 +1227,9 @@ export function App() {
     return scores;
   }, [gamesById, predictions]);
 
-  const overallLeaderboardRows = useMemo(() => {
-    const totalsByUserId = new Map<string, { displayName: string; totalScore: number }>();
-    predictions.forEach((prediction) => {
-      if (prediction.type !== "competition") {
-        return;
-      }
-      const score = scoreByPredictionId.get(prediction.id) ?? null;
-      if (score === null) {
-        return;
-      }
-      const userId = prediction.ownerUserId ?? "";
-      if (!userId) {
-        return;
-      }
-      const displayName =
-        prediction.ownerDisplayName?.trim() || prediction.ownerUserId || "Unknown";
-      const existing = totalsByUserId.get(userId);
-      if (!existing) {
-        totalsByUserId.set(userId, { displayName, totalScore: score });
-        return;
-      }
-      totalsByUserId.set(userId, {
-        displayName: existing.displayName,
-        totalScore: existing.totalScore + score
-      });
-    });
-    return [...totalsByUserId.entries()]
-      .map(([userId, entry]) => ({ userId, ...entry }))
-      .sort((left, right) => {
-        if (left.totalScore !== right.totalScore) {
-          return left.totalScore - right.totalScore;
-        }
-        return left.displayName.localeCompare(right.displayName);
-      });
-  }, [predictions, scoreByPredictionId]);
+  const overallLeaderboardRows = useMemo<LeaderboardStanding[]>(() => {
+    return calculateLeaderboardStandings(predictions, games);
+  }, [games, predictions]);
 
   const competitionEntryByGameId = useMemo(() => {
     const entries = new Map<string, boolean>();
