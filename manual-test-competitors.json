@@ -1,0 +1,41 @@
+{
+  "id": "manual-test-drivers",
+  "name": "Manual Test Drivers",
+  "competitors": [
+    {
+      "id": "apollo",
+      "name": "Apollo Hart",
+      "subtitle": "North Star Racing",
+      "number": "7",
+      "color": "#1E88E5"
+    },
+    {
+      "id": "blaze",
+      "name": "Blaze Moreno",
+      "subtitle": "Solar Apex",
+      "number": "12",
+      "color": "#E53935"
+    },
+    {
+      "id": "comet",
+      "name": "Comet Singh",
+      "subtitle": "Vector GP",
+      "number": "22",
+      "color": "#43A047"
+    },
+    {
+      "id": "drift",
+      "name": "Drift Okoye",
+      "subtitle": "Velocity Works",
+      "number": "31",
+      "color": "#FB8C00"
+    },
+    {
+      "id": "echo",
+      "name": "Echo Laurent",
+      "subtitle": "Blue Line Motorsport",
+      "number": "44",
+      "color": "#8E24AA"
+    }
+  ]
+}
