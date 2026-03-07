@@ -35,7 +35,10 @@ nix develop -c npm run dev
 
 ## Test Data
 
-Use [manual-test-competitors.json](/home/rob/projects/sport_rank_prediction_game/manual-test-competitors.json).
+Use these files:
+
+- [manual-test-competitors.json](/home/rob/projects/sport_rank_prediction_game/manual-test-competitors.json)
+- [manual-test-constructors.json](/home/rob/projects/sport_rank_prediction_game/manual-test-constructors.json)
 
 Notes:
 
@@ -62,14 +65,22 @@ Expected: login succeeds and you are treated as admin for this local run.
 3. Upload [manual-test-competitors.json](/home/rob/projects/sport_rank_prediction_game/manual-test-competitors.json).
 Expected: the upload succeeds and the status message confirms import.
 
-4. In the Games pane, click `Admin: Create Game`.
+4. Click `Admin: Upload Competitors` again.
 
-5. Create these games using competitor list `Manual Test Drivers`:
+5. Upload [manual-test-constructors.json](/home/rob/projects/sport_rank_prediction_game/manual-test-constructors.json).
+Expected: the upload succeeds and the status message confirms import.
+
+6. In the Games pane, click `Admin: Create Game`.
+
+7. Create these games using competitor list `Manual Test Drivers`:
 - `Manual Test Grand Prix A` with a deadline 1 hour in the future
 - `Manual Test Grand Prix B` with a deadline 2 hours in the future
 - `Manual Test Championship Results` with a deadline 1 hour in the past
 
-Expected: all three games appear in the Games pane. The first two appear under open games. The last appears under closed games.
+8. Create one more game using competitor list `Manual Test Constructors`:
+- `Manual Test Constructors Cup` with a deadline 3 hours in the future
+
+Expected: all four games appear in the Games pane. `Manual Test Grand Prix A`, `Manual Test Grand Prix B`, and `Manual Test Constructors Cup` appear under open games. `Manual Test Championship Results` appears under closed games.
 
 ### 2. Basic prediction flow
 
@@ -127,16 +138,19 @@ Expected: a dialog opens titled `Save as prediction`.
 
 Expected: only games with the same competitor list are shown.
 
-4. In the dialog, change target game to `Manual Test Grand Prix B`.
+4. Confirm that `Manual Test Constructors Cup` does not appear in the target game list.
+Expected: games with different competitor lists are excluded from `Save As`.
 
-5. Keep type as `Fun`.
+5. In the dialog, change target game to `Manual Test Grand Prix B`.
 
-6. Change the name to `Admin Fun B`.
+6. Keep type as `Fun`.
 
-7. Click `Save As`.
+7. Change the name to `Admin Fun B`.
+
+8. Click `Save As`.
 Expected: a new prediction is created for `Manual Test Grand Prix B` and opens in a new pane.
 
-8. Reopen the original `Admin Fun A` prediction.
+9. Reopen the original `Admin Fun A` prediction.
 Expected: it is still attached to `Manual Test Grand Prix A` and unchanged except for any edits you already saved.
 
 ### 5. Save As with type change
@@ -155,6 +169,9 @@ Expected: a new competition prediction is created for `Manual Test Grand Prix B`
 6. Repeat the same action again: same target game, same type `Competition`.
 Expected: the dialog should not allow this combination, or the save should be blocked with a message saying you already have a competition prediction for that game.
 
+7. Reopen the dialog once more and confirm `Manual Test Constructors Cup` is still not available as a target.
+Expected: changing type does not bypass the same-competitor-list restriction.
+
 ### 6. Save As from a results pane
 
 1. In Window B, with the non-admin account, open the results pane for `Manual Test Championship Results`.
@@ -165,13 +182,16 @@ Expected: reordering is allowed locally for save-as purposes, but there is no `S
 3. Click `Save As`.
 Expected: the save-as dialog opens.
 
-4. Set target game to `Manual Test Grand Prix A`.
+4. Confirm that `Manual Test Constructors Cup` does not appear as a target.
+Expected: results-pane `Save As` uses the same compatible-games filter.
 
-5. Set type to `Fun`.
+5. Set target game to `Manual Test Grand Prix A`.
 
-6. Enter the name `Results Remix`.
+6. Set type to `Fun`.
 
-7. Click `Save As`.
+7. Enter the name `Results Remix`.
+
+8. Click `Save As`.
 Expected: a new fun prediction is created for the signed-in non-admin user in `Manual Test Grand Prix A`.
 
 ### 7. Save As validation checks
@@ -209,6 +229,7 @@ The feature set passes manual testing if all of the following are true:
 - `Save As` is available from prediction panes
 - `Save As` is available from results panes
 - `Save As` can target other games with the same competitor list
+- `Save As` excludes games with different competitor lists
 - `Save As` can change prediction type
 - duplicate competition entries are blocked
 - duplicate fun names for the same user and game are blocked

@@ -880,6 +880,7 @@ function createInMemoryStore() {
       const existingIsAdmin = existing?.isAdmin;
       const now = new Date().toISOString();
       let isAdmin = typeof existingIsAdmin === "boolean" ? existingIsAdmin : false;
+      let shouldClaimAdmin = false;
       let userId = googleIdentity.sub;
       if (existingIsAdmin && !inMemoryAdminLockUserId) {
         inMemoryAdminLockUserId = googleIdentity.sub;
@@ -895,8 +896,7 @@ function createInMemoryStore() {
         }
       }
       if (!existing && !emailMatchUserId && !inMemoryAdminLockUserId) {
-        inMemoryAdminLockUserId = googleIdentity.sub;
-        isAdmin = true;
+        shouldClaimAdmin = true;
       }
       if (!displayName) {
         if (!normalizedPreferred) {
@@ -911,6 +911,10 @@ function createInMemoryStore() {
         }
         inMemoryDisplayNameLockByKey.set(displayNameKey, userId);
         displayName = normalizedPreferred;
+      }
+      if (shouldClaimAdmin && !inMemoryAdminLockUserId) {
+        inMemoryAdminLockUserId = userId;
+        isAdmin = true;
       }
       const user = {
         userId,
@@ -1771,6 +1775,7 @@ async function createDynamoStore() {
       if (typeof isAdmin !== "boolean") {
         isAdmin = false;
       }
+      let shouldClaimAdmin = false;
       const normalizedPreferred = normalizeDisplayName(preferredDisplayName);
       let displayName = normalizeDisplayName(existing.Item?.displayName ?? "");
       let emailMatchUser = null;
@@ -1813,28 +1818,7 @@ async function createDynamoStore() {
             })
           );
           if (!usersScan.Items || usersScan.Items.length === 0) {
-            try {
-              await dynamodbClient.send(
-                new PutCommand({
-                  TableName: tableName,
-                  Item: {
-                    pk: ADMIN_LOCK_PK,
-                    sk: ADMIN_LOCK_SK,
-                    itemType: "admin_lock",
-                    userId: googleIdentity.sub,
-                    createdAt: now
-                  },
-                  ConditionExpression: "attribute_not_exists(pk)"
-                })
-              );
-              isAdmin = true;
-            } catch (error) {
-              if (error && error.name === "ConditionalCheckFailedException") {
-                isAdmin = false;
-              } else {
-                throw error;
-              }
-            }
+            shouldClaimAdmin = true;
           } else {
             isAdmin = false;
           }
@@ -1958,6 +1942,30 @@ async function createDynamoStore() {
         }
       }
       const userId = emailMatchUser ? String(emailMatchUser.userId) : googleIdentity.sub;
+      if (shouldClaimAdmin) {
+        try {
+          await dynamodbClient.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: {
+                pk: ADMIN_LOCK_PK,
+                sk: ADMIN_LOCK_SK,
+                itemType: "admin_lock",
+                userId,
+                createdAt: now
+              },
+              ConditionExpression: "attribute_not_exists(pk)"
+            })
+          );
+          isAdmin = true;
+        } catch (error) {
+          if (error && error.name === "ConditionalCheckFailedException") {
+            isAdmin = false;
+          } else {
+            throw error;
+          }
+        }
+      }
       const user = {
         userId,
         email: googleIdentity.email,

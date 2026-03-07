@@ -1,0 +1,31 @@
+{
+  "id": "manual-test-constructors",
+  "name": "Manual Test Constructors",
+  "competitors": [
+    {
+      "id": "north-star",
+      "name": "North Star Racing",
+      "color": "#1E88E5"
+    },
+    {
+      "id": "solar-apex",
+      "name": "Solar Apex",
+      "color": "#E53935"
+    },
+    {
+      "id": "vector-gp",
+      "name": "Vector GP",
+      "color": "#43A047"
+    },
+    {
+      "id": "velocity-works",
+      "name": "Velocity Works",
+      "color": "#FB8C00"
+    },
+    {
+      "id": "blue-line",
+      "name": "Blue Line Motorsport",
+      "color": "#8E24AA"
+    }
+  ]
+}

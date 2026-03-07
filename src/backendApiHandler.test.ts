@@ -2,11 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  handler,
   listCompetitorListsFromDynamoScan,
   listGamesFromDynamoScan,
   listProjectSummariesFromDynamoScan,
   listPredictionsForGameFromDynamoQuery
 } from "../backend/api-handler.mjs";
+
+interface HandlerResponse {
+  statusCode: number;
+  body: string;
+}
 
 class FakeScanCommand {
   input: Record<string, unknown>;
@@ -378,4 +384,82 @@ test("listPredictionsForGameFromDynamoQuery follows LastEvaluatedKey across page
       updatedAt: "2026-02-26T00:00:00.000Z"
     }
   ]);
+});
+
+test("first local user keeps admin claim after providing display name", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalClientId = process.env.VITE_GOOGLE_CLIENT_ID;
+  process.env.VITE_GOOGLE_CLIENT_ID = "manual-test-client-id";
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("oauth2/v3/tokeninfo")) {
+      return {
+        ok: true,
+        async json() {
+          return {
+            aud: "manual-test-client-id",
+            exp: String(Math.floor(Date.now() / 1000) + 3600),
+            email: "first-admin@example.com",
+            sub: "first-admin-user"
+          };
+        }
+      } as Response;
+    }
+    return {
+      ok: true,
+      async json() {
+        return {
+          name: "First Admin"
+        };
+      }
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const missingDisplayNameResponse = (await handler({
+      rawPath: "/api/auth/google/session",
+      body: JSON.stringify({
+        accessToken: "token-without-display-name"
+      }),
+      headers: {},
+      requestContext: {
+        http: {
+          method: "POST"
+        }
+      }
+    })) as HandlerResponse;
+
+    assert.equal(missingDisplayNameResponse.statusCode, 400);
+    assert.deepEqual(JSON.parse(missingDisplayNameResponse.body), {
+      message: "Display name is required."
+    });
+
+    const successfulResponse = (await handler({
+      rawPath: "/api/auth/google/session",
+      body: JSON.stringify({
+        accessToken: "token-with-display-name",
+        displayName: "Admin One"
+      }),
+      headers: {},
+      requestContext: {
+        http: {
+          method: "POST"
+        }
+      }
+    })) as HandlerResponse;
+
+    assert.equal(successfulResponse.statusCode, 200);
+    const parsed = JSON.parse(successfulResponse.body);
+    assert.equal(parsed.authenticated, true);
+    assert.equal(parsed.user.displayName, "Admin One");
+    assert.equal(parsed.user.isAdmin, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalClientId === undefined) {
+      delete process.env.VITE_GOOGLE_CLIENT_ID;
+    } else {
+      process.env.VITE_GOOGLE_CLIENT_ID = originalClientId;
+    }
+  }
 });
