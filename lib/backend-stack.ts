@@ -44,6 +44,7 @@ export class BackendStack extends Stack {
       billingMode: BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttlEpochSeconds",
       pointInTimeRecovery: true,
+      deletionProtection: true,
       removalPolicy: RemovalPolicy.RETAIN
     });
 

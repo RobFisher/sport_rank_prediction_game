@@ -29,3 +29,6 @@ The app is deployed to AWS with CDK:
   scripts deploy backend, frontend, or both.
 
 For step-by-step setup and deployment commands, see `INSTALL.md`.
+
+For an end-to-end local regression checklist, including `Save As` coverage, see
+`MANUAL_TESTING.md`.

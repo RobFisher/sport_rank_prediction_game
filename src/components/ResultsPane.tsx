@@ -7,8 +7,10 @@ interface ResultsPaneProps {
   game: Game;
   competitorList: CompetitorList;
   initialCompetitorIds: string[];
-  canEdit: boolean;
+  canEditResults: boolean;
+  canSaveAsPrediction: boolean;
   onSaveResults: (gameId: string, competitorIds: string[]) => void;
+  onSaveAsPrediction: (gameId: string, competitorIds: string[]) => void;
   onRemovePane: (paneIndex: number) => void;
 }
 
@@ -30,21 +32,24 @@ export function ResultsPane({
   game,
   competitorList,
   initialCompetitorIds,
-  canEdit,
+  canEditResults,
+  canSaveAsPrediction,
   onSaveResults,
+  onSaveAsPrediction,
   onRemovePane
 }: ResultsPaneProps) {
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [competitorIds, setCompetitorIds] = useState<string[]>(initialCompetitorIds);
   const initialSignature = initialCompetitorIds.join("|");
+  const canReorder = canEditResults || canSaveAsPrediction;
 
   useEffect(() => {
     setCompetitorIds(initialCompetitorIds);
   }, [game.id, initialSignature]);
 
   const hasUnsavedChanges =
-    canEdit && !areStringArraysEqual(competitorIds, initialCompetitorIds);
+    canReorder && !areStringArraysEqual(competitorIds, initialCompetitorIds);
   const competitorById = useMemo(
     () => new Map(competitorList.competitors.map((competitor) => [competitor.id, competitor])),
     [competitorList.competitors]
@@ -58,7 +63,7 @@ export function ResultsPane({
   }
 
   function handleDrop(event: React.DragEvent<HTMLElement>): void {
-    if (!canEdit || dragFromIndex === null || dragOverIndex === null) {
+    if (!canReorder || dragFromIndex === null || dragOverIndex === null) {
       return;
     }
     event.preventDefault();
@@ -75,7 +80,7 @@ export function ResultsPane({
       className={`pane ${hasUnsavedChanges ? "pane-dirty" : ""}`}
       onDrop={handleDrop}
       onDragOver={(event) => {
-        if (!canEdit || dragFromIndex === null) {
+        if (!canReorder || dragFromIndex === null) {
           return;
         }
         event.preventDefault();
@@ -91,13 +96,21 @@ export function ResultsPane({
             {game.results?.length ? "Saved results loaded." : "No saved results yet."}
           </span>
         </div>
-        {canEdit ? (
+        {canEditResults ? (
           <button
             className="pane-export"
             onClick={() => onSaveResults(game.id, competitorIds)}
             disabled={!hasUnsavedChanges}
           >
             Save Results
+          </button>
+        ) : null}
+        {canSaveAsPrediction ? (
+          <button
+            className="pane-export"
+            onClick={() => onSaveAsPrediction(game.id, competitorIds)}
+          >
+            Save As
           </button>
         ) : null}
         <button
@@ -127,7 +140,7 @@ export function ResultsPane({
                       : ""
                   }`}
                   onDragOver={(event) => {
-                    if (!canEdit || dragFromIndex === null) {
+                    if (!canReorder || dragFromIndex === null) {
                       return;
                     }
                     event.preventDefault();
@@ -136,9 +149,9 @@ export function ResultsPane({
                 />
                 <li
                   className="competitor-row"
-                  draggable={canEdit}
+                  draggable={canReorder}
                   onDragStart={(event) => {
-                    if (!canEdit) {
+                    if (!canReorder) {
                       return;
                     }
                     event.dataTransfer.effectAllowed = "move";
@@ -146,7 +159,7 @@ export function ResultsPane({
                     setDragFromIndex(index);
                   }}
                   onDragOver={(event) => {
-                    if (!canEdit || dragFromIndex === null) {
+                    if (!canReorder || dragFromIndex === null) {
                       return;
                     }
                     event.preventDefault();
@@ -174,7 +187,7 @@ export function ResultsPane({
                       onClick={() =>
                         setCompetitorIds((current) => moveCompetitor(current, index, index - 1))
                       }
-                      disabled={!canEdit || index === 0}
+                      disabled={!canReorder || index === 0}
                       aria-label={`Move ${competitor.name} up`}
                       title="Move up"
                     >
@@ -184,7 +197,7 @@ export function ResultsPane({
                       onClick={() =>
                         setCompetitorIds((current) => moveCompetitor(current, index, index + 1))
                       }
-                      disabled={!canEdit || index === competitorIds.length - 1}
+                      disabled={!canReorder || index === competitorIds.length - 1}
                       aria-label={`Move ${competitor.name} down`}
                       title="Move down"
                     >
@@ -202,7 +215,7 @@ export function ResultsPane({
                 : ""
             }`}
             onDragOver={(event) => {
-              if (!canEdit || dragFromIndex === null) {
+              if (!canReorder || dragFromIndex === null) {
                 return;
               }
               event.preventDefault();

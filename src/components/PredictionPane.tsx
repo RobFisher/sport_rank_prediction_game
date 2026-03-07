@@ -15,10 +15,11 @@ interface PredictionPaneProps {
   competitorList: CompetitorList;
   onMoveCompetitor: (predictionId: string, fromIndex: number, toIndex: number) => void;
   onSavePrediction: (predictionId: string) => void;
+  onSaveAsPrediction: (predictionId: string) => void;
   onDeletePrediction?: (predictionId: string) => void;
   onRemovePane: (paneIndex: number) => void;
   saveDisabled?: boolean;
-  saveLabel?: string;
+  saveAsDisabled?: boolean;
   deleteDisabled?: boolean;
   hasUnsavedChanges?: boolean;
 }
@@ -32,10 +33,11 @@ export function PredictionPane({
   competitorList,
   onMoveCompetitor,
   onSavePrediction,
+  onSaveAsPrediction,
   onDeletePrediction,
   onRemovePane,
   saveDisabled,
-  saveLabel,
+  saveAsDisabled,
   deleteDisabled,
   hasUnsavedChanges
 }: PredictionPaneProps) {
@@ -110,7 +112,14 @@ export function PredictionPane({
           onClick={() => onSavePrediction(prediction.id)}
           disabled={saveDisabled}
         >
-          {saveLabel ?? "Save"}
+          Save
+        </button>
+        <button
+          className="pane-export"
+          onClick={() => onSaveAsPrediction(prediction.id)}
+          disabled={saveAsDisabled}
+        >
+          Save As
         </button>
         {onDeletePrediction ? (
           <button
