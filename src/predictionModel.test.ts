@@ -164,6 +164,7 @@ test("calculateLeaderboardStandings counts entered games, podiums, and F1 points
         userId: "u1",
         displayName: "Alice",
         gamesEntered: 2,
+        averageScore: 1,
         firstPlaces: 1,
         secondPlaces: 1,
         thirdPlaces: 0,
@@ -173,6 +174,7 @@ test("calculateLeaderboardStandings counts entered games, podiums, and F1 points
         userId: "u2",
         displayName: "Bob",
         gamesEntered: 2,
+        averageScore: 1,
         firstPlaces: 1,
         secondPlaces: 1,
         thirdPlaces: 0,
@@ -182,6 +184,7 @@ test("calculateLeaderboardStandings counts entered games, podiums, and F1 points
         userId: "u3",
         displayName: "Charlie",
         gamesEntered: 1,
+        averageScore: 4,
         firstPlaces: 0,
         secondPlaces: 0,
         thirdPlaces: 1,
@@ -241,6 +244,7 @@ test("calculateLeaderboardStandings awards shared places and points for tied sco
         userId: "u1",
         displayName: "Alice",
         gamesEntered: 1,
+        averageScore: 0,
         firstPlaces: 1,
         secondPlaces: 0,
         thirdPlaces: 0,
@@ -250,6 +254,7 @@ test("calculateLeaderboardStandings awards shared places and points for tied sco
         userId: "u2",
         displayName: "Bob",
         gamesEntered: 1,
+        averageScore: 0,
         firstPlaces: 1,
         secondPlaces: 0,
         thirdPlaces: 0,
@@ -259,10 +264,88 @@ test("calculateLeaderboardStandings awards shared places and points for tied sco
         userId: "u3",
         displayName: "Charlie",
         gamesEntered: 1,
+        averageScore: 2,
         firstPlaces: 0,
         secondPlaces: 1,
         thirdPlaces: 0,
         points: 18
+      }
+    ]
+  );
+});
+
+test("calculateLeaderboardStandings includes average score per scored competition game", () => {
+  assert.deepEqual(
+    calculateLeaderboardStandings(
+      [
+        {
+          id: "prediction-1",
+          gameId: "game-1",
+          type: "competition",
+          name: "",
+          competitorIds: ["a", "b", "c"],
+          createdAt: "2026-01-01T00:00:00Z",
+          ownerUserId: "u1",
+          ownerDisplayName: "Alice"
+        },
+        {
+          id: "prediction-2",
+          gameId: "game-2",
+          type: "competition",
+          name: "",
+          competitorIds: ["b", "c", "a"],
+          createdAt: "2026-01-01T00:00:00Z",
+          ownerUserId: "u1",
+          ownerDisplayName: "Alice"
+        },
+        {
+          id: "prediction-3",
+          gameId: "game-2",
+          type: "competition",
+          name: "",
+          competitorIds: ["a", "b", "c"],
+          createdAt: "2026-01-01T00:00:00Z",
+          ownerUserId: "u2",
+          ownerDisplayName: "Bob"
+        }
+      ],
+      [
+        {
+          id: "game-1",
+          name: "Game 1",
+          competitorListId: "list-1",
+          closesAt: "2026-01-01T00:00:00Z",
+          results: ["a", "b", "c"]
+        },
+        {
+          id: "game-2",
+          name: "Game 2",
+          competitorListId: "list-1",
+          closesAt: "2026-01-01T00:00:00Z",
+          results: ["a", "b", "c"]
+        }
+      ]
+    ),
+    [
+      {
+        userId: "u1",
+        displayName: "Alice",
+        gamesEntered: 2,
+        averageScore: 2,
+        firstPlaces: 1,
+        secondPlaces: 1,
+        thirdPlaces: 0,
+        points: 43
+      },
+      {
+        userId: "u2",
+        displayName: "Bob",
+        gamesEntered: 1,
+        averageScore: 0,
+        firstPlaces: 1,
+        secondPlaces: 0,
+        thirdPlaces: 0,
+        points: 25
       }
     ]
   );

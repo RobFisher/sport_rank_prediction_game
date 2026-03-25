@@ -46,6 +46,7 @@ export interface LeaderboardStanding {
   userId: string;
   displayName: string;
   gamesEntered: number;
+  averageScore: number;
   firstPlaces: number;
   secondPlaces: number;
   thirdPlaces: number;
@@ -246,7 +247,12 @@ export function calculateLeaderboardStandings(
     scoredCompetitionPredictionsByGameId.set(prediction.gameId, predictionsForGame);
   });
 
-  const standingsByUserId = new Map<string, LeaderboardStanding>();
+  const standingsByUserId = new Map<
+    string,
+    LeaderboardStanding & {
+      totalScore: number;
+    }
+  >();
 
   scoredCompetitionPredictionsByGameId.forEach((predictionsForGame) => {
     const sorted = [...predictionsForGame].sort((left, right) => {
@@ -273,13 +279,16 @@ export function calculateLeaderboardStandings(
         userId: entry.userId,
         displayName: entry.displayName,
         gamesEntered: 0,
+        averageScore: 0,
         firstPlaces: 0,
         secondPlaces: 0,
         thirdPlaces: 0,
-        points: 0
+        points: 0,
+        totalScore: 0
       };
 
       standing.gamesEntered += 1;
+      standing.totalScore += entry.score;
       if (currentPlace === 1) {
         standing.firstPlaces += 1;
       }
@@ -294,24 +303,29 @@ export function calculateLeaderboardStandings(
     });
   });
 
-  return [...standingsByUserId.values()].sort((left, right) => {
-    if (left.points !== right.points) {
-      return right.points - left.points;
-    }
-    if (left.firstPlaces !== right.firstPlaces) {
-      return right.firstPlaces - left.firstPlaces;
-    }
-    if (left.secondPlaces !== right.secondPlaces) {
-      return right.secondPlaces - left.secondPlaces;
-    }
-    if (left.thirdPlaces !== right.thirdPlaces) {
-      return right.thirdPlaces - left.thirdPlaces;
-    }
-    if (left.gamesEntered !== right.gamesEntered) {
-      return right.gamesEntered - left.gamesEntered;
-    }
-    return left.displayName.localeCompare(right.displayName);
-  });
+  return [...standingsByUserId.values()]
+    .map(({ totalScore, ...standing }) => ({
+      ...standing,
+      averageScore: totalScore / standing.gamesEntered
+    }))
+    .sort((left, right) => {
+      if (left.points !== right.points) {
+        return right.points - left.points;
+      }
+      if (left.firstPlaces !== right.firstPlaces) {
+        return right.firstPlaces - left.firstPlaces;
+      }
+      if (left.secondPlaces !== right.secondPlaces) {
+        return right.secondPlaces - left.secondPlaces;
+      }
+      if (left.thirdPlaces !== right.thirdPlaces) {
+        return right.thirdPlaces - left.thirdPlaces;
+      }
+      if (left.gamesEntered !== right.gamesEntered) {
+        return right.gamesEntered - left.gamesEntered;
+      }
+      return left.displayName.localeCompare(right.displayName);
+    });
 }
 
 export function isCompetitionClosedByTime(closesAt: string, nowMs = Date.now()): boolean {

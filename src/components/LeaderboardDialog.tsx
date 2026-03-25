@@ -7,6 +7,11 @@ interface LeaderboardDialogProps {
   onClose: () => void;
 }
 
+function formatAverageScore(score: number): string {
+  const roundedScore = Math.round(score * 100) / 100;
+  return Number.isInteger(roundedScore) ? String(roundedScore) : roundedScore.toFixed(2);
+}
+
 export function LeaderboardDialog({
   open,
   canShowLeaderboard,
@@ -31,6 +36,7 @@ export function LeaderboardDialog({
               <tr>
                 <th scope="col">Username</th>
                 <th scope="col">Games entered</th>
+                <th scope="col">Avg score</th>
                 <th scope="col">1st</th>
                 <th scope="col">2nd</th>
                 <th scope="col">3rd</th>
@@ -42,6 +48,7 @@ export function LeaderboardDialog({
                 <tr key={row.userId}>
                   <td>{row.displayName}</td>
                   <td>{row.gamesEntered}</td>
+                  <td>{formatAverageScore(row.averageScore)}</td>
                   <td>{row.firstPlaces}</td>
                   <td>{row.secondPlaces}</td>
                   <td>{row.thirdPlaces}</td>
