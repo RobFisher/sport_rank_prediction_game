@@ -52,6 +52,7 @@ Guidance for AI coding agents working in this repo.
 - Prediction panes are the primary UI. Games list and prediction list panes exist.
 - Admin actions live in the Games pane (create/delete) and header (upload competitors).
 - Use modal dialogs for destructive actions or save flows.
+- Leaderboard panel supports multiple tabs backed by config: title, filter, columns, and sort.
 
 ## Tests
 - Backend scan/query helpers: `src/backendApiHandler.test.ts`.

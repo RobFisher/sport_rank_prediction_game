@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import "./app.css";
 import {
-  calculateLeaderboardStandings,
+  LEADERBOARD_DEFINITIONS,
+  calculateLeaderboardTables,
   isCompetitionClosedByTime,
   type CompetitorList,
   calculatePredictionScore,
   createPredictionFromGame,
   moveCompetitor,
   type Game,
-  type LeaderboardStanding,
+  type LeaderboardTable,
   type Prediction,
   type PredictionType
 } from "./predictionModel.js";
@@ -1226,8 +1227,8 @@ export function App() {
     return scores;
   }, [gamesById, predictions]);
 
-  const overallLeaderboardRows = useMemo<LeaderboardStanding[]>(() => {
-    return calculateLeaderboardStandings(predictions, games);
+  const leaderboardTables = useMemo<LeaderboardTable[]>(() => {
+    return calculateLeaderboardTables(predictions, games, LEADERBOARD_DEFINITIONS);
   }, [games, predictions]);
 
   const competitionEntryByGameId = useMemo(() => {
@@ -1452,7 +1453,7 @@ export function App() {
       <LeaderboardDialog
         open={leaderboardDialogOpen}
         canShowLeaderboard={googleConnected}
-        rows={overallLeaderboardRows}
+        leaderboards={leaderboardTables}
         onClose={() => setLeaderboardDialogOpen(false)}
       />
       <DeleteGameDialog

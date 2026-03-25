@@ -662,6 +662,28 @@ h1 {
   table-layout: fixed;
 }
 
+.leaderboard-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.leaderboard-tab {
+  border: 1px solid #c8d2e2;
+  background: #f5f8fc;
+  color: #385071;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-weight: 600;
+}
+
+.leaderboard-tab-active {
+  border-color: #2f4f87;
+  background: #2f4f87;
+  color: #ffffff;
+}
+
 .leaderboard-table th,
 .leaderboard-table td {
   text-align: left;

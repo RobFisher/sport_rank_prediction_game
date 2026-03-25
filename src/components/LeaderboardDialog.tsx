@@ -1,9 +1,14 @@
-import type { LeaderboardStanding } from "../predictionModel.js";
+import { useEffect, useState } from "react";
+import type {
+  LeaderboardColumnType,
+  LeaderboardStanding,
+  LeaderboardTable
+} from "../predictionModel.js";
 
 interface LeaderboardDialogProps {
   open: boolean;
   canShowLeaderboard: boolean;
-  rows: LeaderboardStanding[];
+  leaderboards: LeaderboardTable[];
   onClose: () => void;
 }
 
@@ -12,51 +17,124 @@ function formatAverageScore(score: number): string {
   return Number.isInteger(roundedScore) ? String(roundedScore) : roundedScore.toFixed(2);
 }
 
+function getColumnLabel(column: LeaderboardColumnType): string {
+  switch (column) {
+    case "games_entered":
+      return "Games entered";
+    case "avg_score":
+      return "Avg score";
+    case "first":
+      return "1st";
+    case "second":
+      return "2nd";
+    case "third":
+      return "3rd";
+    case "points":
+      return "Points";
+  }
+}
+
+function renderColumnValue(row: LeaderboardStanding, column: LeaderboardColumnType): string | number {
+  switch (column) {
+    case "games_entered":
+      return row.gamesEntered;
+    case "avg_score":
+      return formatAverageScore(row.averageScore);
+    case "first":
+      return row.firstPlaces;
+    case "second":
+      return row.secondPlaces;
+    case "third":
+      return row.thirdPlaces;
+    case "points":
+      return row.points;
+  }
+}
+
 export function LeaderboardDialog({
   open,
   canShowLeaderboard,
-  rows,
+  leaderboards,
   onClose
 }: LeaderboardDialogProps) {
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      setActiveTabIndex(0);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (activeTabIndex >= leaderboards.length) {
+      setActiveTabIndex(0);
+    }
+  }, [activeTabIndex, leaderboards.length]);
+
   if (!open) {
     return null;
   }
 
+  const activeLeaderboard = leaderboards[activeTabIndex] ?? null;
+  const activeRows = activeLeaderboard?.rows ?? [];
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal-card modal-card-large">
-        <h2>Overall leaderboard</h2>
+        <h2>Leaderboard</h2>
         {!canShowLeaderboard ? (
           <p className="empty-state">Sign in to view leaderboard scores.</p>
-        ) : rows.length === 0 ? (
-          <p className="empty-state">No completed competition results yet.</p>
+        ) : leaderboards.length === 0 ? (
+          <p className="empty-state">No leaderboards configured.</p>
         ) : (
-          <table className="leaderboard-table">
-            <thead>
-              <tr>
-                <th scope="col">Username</th>
-                <th scope="col">Games entered</th>
-                <th scope="col">Avg score</th>
-                <th scope="col">1st</th>
-                <th scope="col">2nd</th>
-                <th scope="col">3rd</th>
-                <th scope="col">Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.userId}>
-                  <td>{row.displayName}</td>
-                  <td>{row.gamesEntered}</td>
-                  <td>{formatAverageScore(row.averageScore)}</td>
-                  <td>{row.firstPlaces}</td>
-                  <td>{row.secondPlaces}</td>
-                  <td>{row.thirdPlaces}</td>
-                  <td>{row.points}</td>
-                </tr>
+          <>
+            <div className="leaderboard-tabs" role="tablist" aria-label="Leaderboard tabs">
+              {leaderboards.map((leaderboard, index) => (
+                <button
+                  key={leaderboard.definition.title}
+                  type="button"
+                  role="tab"
+                  className={
+                    index === activeTabIndex
+                      ? "leaderboard-tab leaderboard-tab-active"
+                      : "leaderboard-tab"
+                  }
+                  aria-selected={index === activeTabIndex}
+                  onClick={() => setActiveTabIndex(index)}
+                >
+                  {leaderboard.definition.title}
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+            {activeLeaderboard && activeRows.length === 0 ? (
+              <p className="empty-state">
+                No completed competition results yet for {activeLeaderboard.definition.title}.
+              </p>
+            ) : activeLeaderboard ? (
+              <table className="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Username</th>
+                    {activeLeaderboard.definition.columns.map((column) => (
+                      <th key={column} scope="col">
+                        {getColumnLabel(column)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeRows.map((row) => (
+                    <tr key={row.userId}>
+                      <td>{row.displayName}</td>
+                      {activeLeaderboard.definition.columns.map((column) => (
+                        <td key={`${row.userId}-${column}`}>{renderColumnValue(row, column)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </>
         )}
         <div className="modal-actions">
           <button type="button" className="modal-create" onClick={onClose}>

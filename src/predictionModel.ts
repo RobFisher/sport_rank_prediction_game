@@ -53,6 +53,46 @@ export interface LeaderboardStanding {
   points: number;
 }
 
+export type LeaderboardColumnType =
+  | "games_entered"
+  | "avg_score"
+  | "first"
+  | "second"
+  | "third"
+  | "points";
+
+export type LeaderboardSortOrder = "asc" | "desc";
+
+export interface LeaderboardDefinition {
+  title: string;
+  columns: LeaderboardColumnType[];
+  sortColumn: LeaderboardColumnType;
+  sortOrder: LeaderboardSortOrder;
+  filter: string | null;
+}
+
+export interface LeaderboardTable {
+  definition: LeaderboardDefinition;
+  rows: LeaderboardStanding[];
+}
+
+export const LEADERBOARD_DEFINITIONS: LeaderboardDefinition[] = [
+  {
+    title: "Overall",
+    columns: ["games_entered", "avg_score", "first", "second", "third", "points"],
+    sortColumn: "points",
+    sortOrder: "desc",
+    filter: null
+  },
+  {
+    title: "Races",
+    columns: ["games_entered", "avg_score"],
+    sortColumn: "avg_score",
+    sortOrder: "asc",
+    filter: "Race"
+  }
+];
+
 export const F1_CHAMPIONSHIP_POINTS_BY_PLACE = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1] as const;
 
 export interface SeedData {
@@ -219,7 +259,31 @@ export function calculateLeaderboardStandings(
   predictions: Prediction[],
   games: Game[]
 ): LeaderboardStanding[] {
-  const gamesById = new Map(games.map((game) => [game.id, game]));
+  return calculateLeaderboardStandingsForDefinition(
+    predictions,
+    games,
+    LEADERBOARD_DEFINITIONS[0]
+  );
+}
+
+export function calculateLeaderboardTables(
+  predictions: Prediction[],
+  games: Game[],
+  definitions: LeaderboardDefinition[]
+): LeaderboardTable[] {
+  return definitions.map((definition) => ({
+    definition,
+    rows: calculateLeaderboardStandingsForDefinition(predictions, games, definition)
+  }));
+}
+
+export function calculateLeaderboardStandingsForDefinition(
+  predictions: Prediction[],
+  games: Game[],
+  definition: LeaderboardDefinition
+): LeaderboardStanding[] {
+  const filteredGames = games.filter((game) => matchesLeaderboardFilter(game, definition.filter));
+  const gamesById = new Map(filteredGames.map((game) => [game.id, game]));
   const scoredCompetitionPredictionsByGameId = new Map<
     string,
     Array<{ userId: string; displayName: string; score: number }>
@@ -308,24 +372,94 @@ export function calculateLeaderboardStandings(
       ...standing,
       averageScore: totalScore / standing.gamesEntered
     }))
-    .sort((left, right) => {
-      if (left.points !== right.points) {
-        return right.points - left.points;
+    .sort((left, right) => compareLeaderboardRows(left, right, definition));
+}
+
+function matchesLeaderboardFilter(game: Game, filter: string | null): boolean {
+  if (filter === null) {
+    return true;
+  }
+
+  return game.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase());
+}
+
+function compareLeaderboardRows(
+  left: LeaderboardStanding,
+  right: LeaderboardStanding,
+  definition: LeaderboardDefinition
+): number {
+  const primaryComparison = compareLeaderboardColumn(
+    left,
+    right,
+    definition.sortColumn,
+    definition.sortOrder
+  );
+  if (primaryComparison !== 0) {
+    return primaryComparison;
+  }
+
+  if (definition.sortColumn === "points") {
+    const overallTieBreakers: Array<{
+      column: LeaderboardColumnType;
+      sortOrder: LeaderboardSortOrder;
+    }> = [
+      { column: "first", sortOrder: "desc" },
+      { column: "second", sortOrder: "desc" },
+      { column: "third", sortOrder: "desc" },
+      { column: "games_entered", sortOrder: "desc" }
+    ];
+
+    for (const tieBreaker of overallTieBreakers) {
+      const comparison = compareLeaderboardColumn(
+        left,
+        right,
+        tieBreaker.column,
+        tieBreaker.sortOrder
+      );
+      if (comparison !== 0) {
+        return comparison;
       }
-      if (left.firstPlaces !== right.firstPlaces) {
-        return right.firstPlaces - left.firstPlaces;
-      }
-      if (left.secondPlaces !== right.secondPlaces) {
-        return right.secondPlaces - left.secondPlaces;
-      }
-      if (left.thirdPlaces !== right.thirdPlaces) {
-        return right.thirdPlaces - left.thirdPlaces;
-      }
-      if (left.gamesEntered !== right.gamesEntered) {
-        return right.gamesEntered - left.gamesEntered;
-      }
-      return left.displayName.localeCompare(right.displayName);
-    });
+    }
+  }
+
+  return left.displayName.localeCompare(right.displayName);
+}
+
+function compareLeaderboardColumn(
+  left: LeaderboardStanding,
+  right: LeaderboardStanding,
+  column: LeaderboardColumnType,
+  sortOrder: LeaderboardSortOrder
+): number {
+  const multiplier = sortOrder === "asc" ? 1 : -1;
+  const leftValue = getLeaderboardColumnValue(left, column);
+  const rightValue = getLeaderboardColumnValue(right, column);
+
+  if (leftValue === rightValue) {
+    return 0;
+  }
+
+  return (leftValue - rightValue) * multiplier;
+}
+
+function getLeaderboardColumnValue(
+  standing: LeaderboardStanding,
+  column: LeaderboardColumnType
+): number {
+  switch (column) {
+    case "games_entered":
+      return standing.gamesEntered;
+    case "avg_score":
+      return standing.averageScore;
+    case "first":
+      return standing.firstPlaces;
+    case "second":
+      return standing.secondPlaces;
+    case "third":
+      return standing.thirdPlaces;
+    case "points":
+      return standing.points;
+  }
 }
 
 export function isCompetitionClosedByTime(closesAt: string, nowMs = Date.now()): boolean {

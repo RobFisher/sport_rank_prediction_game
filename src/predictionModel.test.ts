@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  LEADERBOARD_DEFINITIONS,
   F1_CHAMPIONSHIP_POINTS_BY_PLACE,
+  calculateLeaderboardTables,
   calculatePredictionScore,
   calculateLeaderboardStandings,
   calculatePredictionScoreContributions,
@@ -349,6 +351,150 @@ test("calculateLeaderboardStandings includes average score per scored competitio
       }
     ]
   );
+});
+
+test("calculateLeaderboardTables builds overall and filtered leaderboard tabs", () => {
+  const leaderboards = calculateLeaderboardTables(
+    [
+      {
+        id: "prediction-race-1",
+        gameId: "race-1",
+        type: "competition",
+        name: "",
+        competitorIds: ["a", "b", "c"],
+        createdAt: "2026-01-01T00:00:00Z",
+        ownerUserId: "u1",
+        ownerDisplayName: "Alice"
+      },
+      {
+        id: "prediction-race-2",
+        gameId: "race-1",
+        type: "competition",
+        name: "",
+        competitorIds: ["b", "a", "c"],
+        createdAt: "2026-01-01T00:00:00Z",
+        ownerUserId: "u2",
+        ownerDisplayName: "Bob"
+      },
+      {
+        id: "prediction-race-3",
+        gameId: "race-2",
+        type: "competition",
+        name: "",
+        competitorIds: ["b", "c", "a"],
+        createdAt: "2026-01-01T00:00:00Z",
+        ownerUserId: "u1",
+        ownerDisplayName: "Alice"
+      },
+      {
+        id: "prediction-race-4",
+        gameId: "race-2",
+        type: "competition",
+        name: "",
+        competitorIds: ["a", "b", "c"],
+        createdAt: "2026-01-01T00:00:00Z",
+        ownerUserId: "u2",
+        ownerDisplayName: "Bob"
+      },
+      {
+        id: "prediction-championship-1",
+        gameId: "championship-1",
+        type: "competition",
+        name: "",
+        competitorIds: ["a", "b", "c"],
+        createdAt: "2026-01-01T00:00:00Z",
+        ownerUserId: "u3",
+        ownerDisplayName: "Charlie"
+      }
+    ],
+    [
+      {
+        id: "race-1",
+        name: "Australian Race",
+        competitorListId: "list-1",
+        closesAt: "2026-01-01T00:00:00Z",
+        results: ["a", "b", "c"]
+      },
+      {
+        id: "race-2",
+        name: "Sprint Race",
+        competitorListId: "list-1",
+        closesAt: "2026-01-01T00:00:00Z",
+        results: ["a", "b", "c"]
+      },
+      {
+        id: "championship-1",
+        name: "Drivers Championship",
+        competitorListId: "list-1",
+        closesAt: "2026-01-01T00:00:00Z",
+        results: ["a", "b", "c"]
+      }
+    ],
+    LEADERBOARD_DEFINITIONS
+  );
+
+  assert.deepEqual(leaderboards, [
+    {
+      definition: LEADERBOARD_DEFINITIONS[0],
+      rows: [
+        {
+          userId: "u1",
+          displayName: "Alice",
+          gamesEntered: 2,
+          averageScore: 2,
+          firstPlaces: 1,
+          secondPlaces: 1,
+          thirdPlaces: 0,
+          points: 43
+        },
+        {
+          userId: "u2",
+          displayName: "Bob",
+          gamesEntered: 2,
+          averageScore: 1,
+          firstPlaces: 1,
+          secondPlaces: 1,
+          thirdPlaces: 0,
+          points: 43
+        },
+        {
+          userId: "u3",
+          displayName: "Charlie",
+          gamesEntered: 1,
+          averageScore: 0,
+          firstPlaces: 1,
+          secondPlaces: 0,
+          thirdPlaces: 0,
+          points: 25
+        }
+      ]
+    },
+    {
+      definition: LEADERBOARD_DEFINITIONS[1],
+      rows: [
+        {
+          userId: "u2",
+          displayName: "Bob",
+          gamesEntered: 2,
+          averageScore: 1,
+          firstPlaces: 1,
+          secondPlaces: 1,
+          thirdPlaces: 0,
+          points: 43
+        },
+        {
+          userId: "u1",
+          displayName: "Alice",
+          gamesEntered: 2,
+          averageScore: 2,
+          firstPlaces: 1,
+          secondPlaces: 1,
+          thirdPlaces: 0,
+          points: 43
+        }
+      ]
+    }
+  ]);
 });
 
 test("isCompetitionClosedByTime is false before close time", () => {
