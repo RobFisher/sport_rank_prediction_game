@@ -86,7 +86,7 @@ export const LEADERBOARD_DEFINITIONS: LeaderboardDefinition[] = [
   },
   {
     title: "Races",
-    columns: ["games_entered", "avg_score"],
+    columns: ["games_entered", "first", "second", "third", "avg_score"],
     sortColumn: "avg_score",
     sortOrder: "asc",
     filter: "Race"
