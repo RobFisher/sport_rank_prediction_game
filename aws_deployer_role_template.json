@@ -35,6 +35,14 @@
       "Resource": "*"
     },
     {
+      "Sid": "RecoverCloudFormationRollbacks",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:ContinueUpdateRollback"
+      ],
+      "Resource": "arn:aws:cloudformation:{{PRIMARY_REGION}}:{{ACCOUNT_ID}}:stack/*/*"
+    },
+    {
       "Sid": "ReadBackendLambdaLogs",
       "Effect": "Allow",
       "Action": [
