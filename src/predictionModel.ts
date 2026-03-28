@@ -190,12 +190,77 @@ export function moveCompetitor(
   return next;
 }
 
+export function getDefaultPredictionCompetitorIds(
+  game: Game,
+  competitorList: CompetitorList,
+  games: Game[]
+): string[] {
+  const baseOrder = competitorList.competitors.map((competitor) => competitor.id);
+  const baseIndexByCompetitorId = new Map(
+    baseOrder.map((competitorId, index) => [competitorId, index])
+  );
+  const totalPositionByCompetitorId = new Map(
+    baseOrder.map((competitorId) => [competitorId, 0])
+  );
+  let matchingResultCount = 0;
+
+  for (const candidateGame of games) {
+    if (candidateGame.competitorListId !== game.competitorListId) {
+      continue;
+    }
+    if (!Array.isArray(candidateGame.results) || candidateGame.results.length !== baseOrder.length) {
+      continue;
+    }
+
+    const seenCompetitorIds = new Set<string>();
+    let isValidResult = true;
+    for (const competitorId of candidateGame.results) {
+      if (
+        !baseIndexByCompetitorId.has(competitorId) ||
+        seenCompetitorIds.has(competitorId)
+      ) {
+        isValidResult = false;
+        break;
+      }
+      seenCompetitorIds.add(competitorId);
+    }
+    if (!isValidResult || seenCompetitorIds.size !== baseOrder.length) {
+      continue;
+    }
+
+    matchingResultCount += 1;
+    candidateGame.results.forEach((competitorId, index) => {
+      totalPositionByCompetitorId.set(
+        competitorId,
+        (totalPositionByCompetitorId.get(competitorId) ?? 0) + index
+      );
+    });
+  }
+
+  if (matchingResultCount === 0) {
+    return baseOrder;
+  }
+
+  return baseOrder.slice().sort((leftCompetitorId, rightCompetitorId) => {
+    const leftTotalPosition = totalPositionByCompetitorId.get(leftCompetitorId) ?? 0;
+    const rightTotalPosition = totalPositionByCompetitorId.get(rightCompetitorId) ?? 0;
+    if (leftTotalPosition !== rightTotalPosition) {
+      return leftTotalPosition - rightTotalPosition;
+    }
+    return (
+      (baseIndexByCompetitorId.get(leftCompetitorId) ?? 0) -
+      (baseIndexByCompetitorId.get(rightCompetitorId) ?? 0)
+    );
+  });
+}
+
 export function createPredictionFromGame(
   id: string,
   game: Game,
   competitorList: CompetitorList,
   type: PredictionType,
-  name: string
+  name: string,
+  games: Game[] = []
 ): Prediction {
   const createdAt = new Date().toISOString();
   return {
@@ -203,7 +268,7 @@ export function createPredictionFromGame(
     gameId: game.id,
     type,
     name,
-    competitorIds: competitorList.competitors.map((competitor) => competitor.id),
+    competitorIds: getDefaultPredictionCompetitorIds(game, competitorList, games),
     createdAt,
     updatedAt: createdAt
   };

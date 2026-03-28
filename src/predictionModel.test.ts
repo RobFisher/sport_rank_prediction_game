@@ -7,8 +7,139 @@ import {
   calculatePredictionScore,
   calculateLeaderboardStandings,
   calculatePredictionScoreContributions,
+  createPredictionFromGame,
+  getDefaultPredictionCompetitorIds,
   isCompetitionClosedByTime
 } from "./predictionModel.js";
+
+test("getDefaultPredictionCompetitorIds averages matching results for the same competitor list", () => {
+  const game = {
+    id: "game-3",
+    name: "Game 3",
+    competitorListId: "list-1",
+    closesAt: "2026-01-03T00:00:00Z"
+  };
+  const competitorList = {
+    id: "list-1",
+    name: "Drivers",
+    competitors: [
+      { id: "a", name: "A" },
+      { id: "b", name: "B" },
+      { id: "c", name: "C" }
+    ]
+  };
+
+  const competitorIds = getDefaultPredictionCompetitorIds(game, competitorList, [
+    {
+      id: "game-1",
+      name: "Game 1",
+      competitorListId: "list-1",
+      closesAt: "2026-01-01T00:00:00Z",
+      results: ["b", "a", "c"]
+    },
+    {
+      id: "game-2",
+      name: "Game 2",
+      competitorListId: "list-1",
+      closesAt: "2026-01-02T00:00:00Z",
+      results: ["b", "c", "a"]
+    },
+    {
+      id: "game-other-list",
+      name: "Other List",
+      competitorListId: "list-2",
+      closesAt: "2026-01-02T00:00:00Z",
+      results: ["z", "y", "x"]
+    }
+  ]);
+
+  assert.deepEqual(competitorIds, ["b", "a", "c"]);
+});
+
+test("getDefaultPredictionCompetitorIds falls back to competitor order when results do not match", () => {
+  const game = {
+    id: "game-2",
+    name: "Game 2",
+    competitorListId: "list-1",
+    closesAt: "2026-01-02T00:00:00Z"
+  };
+  const competitorList = {
+    id: "list-1",
+    name: "Drivers",
+    competitors: [
+      { id: "a", name: "A" },
+      { id: "b", name: "B" },
+      { id: "c", name: "C" }
+    ]
+  };
+
+  const competitorIds = getDefaultPredictionCompetitorIds(game, competitorList, [
+    {
+      id: "game-1",
+      name: "Game 1",
+      competitorListId: "list-1",
+      closesAt: "2026-01-01T00:00:00Z",
+      results: ["a", "b"]
+    },
+    {
+      id: "game-1b",
+      name: "Game 1b",
+      competitorListId: "list-1",
+      closesAt: "2026-01-01T00:00:00Z",
+      results: ["a", "b", "b"]
+    },
+    {
+      id: "game-1c",
+      name: "Game 1c",
+      competitorListId: "list-1",
+      closesAt: "2026-01-01T00:00:00Z",
+      results: ["a", "b", "d"]
+    }
+  ]);
+
+  assert.deepEqual(competitorIds, ["a", "b", "c"]);
+});
+
+test("createPredictionFromGame seeds new predictions from averaged results", () => {
+  const prediction = createPredictionFromGame(
+    "prediction-1",
+    {
+      id: "game-3",
+      name: "Game 3",
+      competitorListId: "list-1",
+      closesAt: "2026-01-03T00:00:00Z"
+    },
+    {
+      id: "list-1",
+      name: "Drivers",
+      competitors: [
+        { id: "a", name: "A" },
+        { id: "b", name: "B" },
+        { id: "c", name: "C" }
+      ]
+    },
+    "fun",
+    "Test",
+    [
+      {
+        id: "game-1",
+        name: "Game 1",
+        competitorListId: "list-1",
+        closesAt: "2026-01-01T00:00:00Z",
+        results: ["c", "a", "b"]
+      },
+      {
+        id: "game-2",
+        name: "Game 2",
+        competitorListId: "list-1",
+        closesAt: "2026-01-02T00:00:00Z",
+        results: ["c", "b", "a"]
+      }
+    ]
+  );
+
+  assert.deepEqual(prediction.competitorIds, ["c", "a", "b"]);
+});
 
 test("calculatePredictionScore returns null when no results", () => {
   assert.equal(calculatePredictionScore(["a", "b"], null), null);

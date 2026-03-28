@@ -774,7 +774,8 @@ export function App() {
       game,
       competitorList,
       type,
-      type === "fun" ? trimmedName : ""
+      type === "fun" ? trimmedName : "",
+      games
     );
 
     try {
